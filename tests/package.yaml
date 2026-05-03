@@ -1,0 +1,3 @@
+dependencies:
+  toit-gen:
+    path: ..
