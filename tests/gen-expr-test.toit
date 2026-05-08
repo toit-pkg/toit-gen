@@ -15,7 +15,7 @@ main:
   test-block-vs-named
   test-nested-calls
   test-named-true-shorthand
-  test-named-false-stays-explicit
+  test-named-false-shorthand
 test-block-vs-named:
   list-ref-var := toit-gen.VarDefinition.local "list" --initial=(toit-gen.Literal [])
   list-ref-var.name = "list"
@@ -532,9 +532,9 @@ test-named-true-shorthand:
   expect-not (code.contains "--flag=true")
       --message="Did not expect explicit `=true`"
 
-test-named-false-stays-explicit:
-  // A Named arg whose value is `Literal false` keeps the explicit
-  // `--flag=false` form (no `--no-flag` shorthand emitted).
+test-named-false-shorthand:
+  // A Named arg whose value is `Literal false` renders as `--no-flag` (Toit's
+  // shorthand) rather than the explicit `--flag=false`.
   callee := toit-gen.Function "callee" --parameters=[] --return-type=null
   callee.name = "callee"
 
@@ -557,5 +557,7 @@ test-named-false-stays-explicit:
   generated := program.gen --in-memory
   code := generated["test-named-false.toit"]
 
-  expect (code.contains "--flag=false")
-      --message="Expected explicit `--flag=false`"
+  expect (code.contains "callee --no-flag\n")
+      --message="Expected `--no-flag` shorthand for Named with Literal false"
+  expect-not (code.contains "--flag=false")
+      --message="Did not expect explicit `=false`"

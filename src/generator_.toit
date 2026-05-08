@@ -610,10 +610,16 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-Named node/Named -> any:
-    // `--flag=true` is equivalent to `--flag` in Toit. Emit the shorthand.
-    if node.value is Literal and (node.value as Literal).value == true:
-      context.write "--$node.parameter.name"
-      return null
+    // `--flag=true` is equivalent to `--flag` in Toit, and `--flag=false` to
+    // `--no-flag`. Emit the shorthand.
+    if node.value is Literal:
+      literal-value := (node.value as Literal).value
+      if literal-value == true:
+        context.write "--$node.parameter.name"
+        return null
+      if literal-value == false:
+        context.write "--no-$node.parameter.name"
+        return null
     context.write "--$node.parameter.name="
     expr_ node.value
     return null
