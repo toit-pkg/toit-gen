@@ -27,6 +27,7 @@ main:
   test-sequence-invoke
   test-import-refer
   test-named-named-constructor
+  test-interface-static-method
 
 test-basic-class:
   cls := toit-gen.Class "MyClass" --kind=toit-gen.Class.CLASS
@@ -607,3 +608,41 @@ test-named-named-constructor:
 
   expect (code.contains "--all=\"x\"")
       --message="Expected `--all=\"x\"` from Named.named"
+
+test-interface-static-method:
+  // Static members on an interface are not implicitly abstract: they keep
+  // their body and need a colon, unlike regular interface members.
+  int-class := toit-gen.Class.core "int"
+
+  itf := toit-gen.Class "MyInterface" --kind=toit-gen.Class.INTERFACE
+
+  // A regular (instance) interface member: implicitly abstract, no body.
+  itf.members.add
+      toit-gen.Function "do-thing" --parameters=[] --return-type=null
+
+  // A static method on the interface: keeps its body.
+  static-body := toit-gen.Sequence
+  static-body.add (toit-gen.Return (toit-gen.Literal 42))
+  static-fn := toit-gen.Function "compute"
+      --parameters=[]
+      --return-type=(toit-gen.Ref int-class)
+  static-fn.body = static-body
+  itf.static-functions.add static-fn
+
+  lib := toit-gen.Library "test-interface-static.toit"
+  lib.classes.add itf
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-interface-static.toit"]
+
+  expect (code.contains "static compute -> int:")
+      --message="Expected static interface method with colon"
+  expect (code.contains "return 42")
+      --message="Expected static interface method body"
+  // The instance member must still render without a colon.
+  expect (code.contains "do-thing\n")
+      --message="Expected instance interface member without colon"
+  expect-not (code.contains "do-thing:")
+      --message="Instance interface members must not have a colon"

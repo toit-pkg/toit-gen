@@ -303,10 +303,12 @@ class GeneratingVisitor implements NodeVisitor:
     write-toitdoc_ node.toitdoc
     // Interface members in Toit are implicitly abstract: no `abstract`
     // keyword, no body, no colon (for non-constructor signatures). Factory
-    // constructors on an interface still get a body and are emitted normally.
+    // constructors and static methods on an interface still get a body and
+    // are emitted normally.
     is-interface-member := current-class_ != null
         and current-class_.kind == Class.INTERFACE
         and not node.is-constructor
+        and not in-static_
     prefix := ""
     if node.is-abstract and not is-interface-member: prefix += "abstract "
     if in-static_: prefix += "static "
