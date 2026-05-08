@@ -10,11 +10,23 @@ main:
   test-classes-and-mixins
   test-implements-and-with
   test-imports-and-exports
+  test-import-without-redundant-prefix
+  test-import-explicit-rename-prefix
   test-named-constructor
   test-abstract-method
   test-super-call
   test-throw
   test-nullable-field
+  test-typed-positional-parameter
+  test-typed-named-parameter
+  test-nullable-named-parameter
+  test-parameter-with-default
+  test-named-nullable-with-null-default
+  test-library-helpers
+  test-class-helpers
+  test-sequence-invoke
+  test-import-refer
+  test-named-named-constructor
 
 test-basic-class:
   cls := toit-gen.Class "MyClass" --kind=toit-gen.Class.CLASS
@@ -252,3 +264,346 @@ test-nullable-field:
       --message="Expected non-nullable field without `?`"
   expect (code.contains "nick/string? := null")
       --message="Expected nullable field with `?` after type"
+
+test-import-without-redundant-prefix:
+  // When the explicit prefix matches the module's last segment, `as prefix`
+  // is redundant and must be suppressed.
+  imp := toit-gen.Import ["my-library"]
+  imp.preferred-prefix = "my-library"
+
+  target := toit-gen.VarDefinition.local "t" --initial=(toit-gen.Literal null)
+  target.name = "t"
+  ref := toit-gen.ImportedRef imp target
+
+  fun := toit-gen.Function "use" --parameters=[] --return-type=null
+  seq := toit-gen.Sequence
+  seq.add (toit-gen.ExpressionStatement ref)
+  fun.body = seq
+
+  lib := toit-gen.Library "test-import-redundant.toit"
+  lib.imports.add imp
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-import-redundant.toit"]
+
+  expect (code.contains "import my-library show t")
+      --message="Expected `import my-library show t` without redundant `as`"
+  expect-not (code.contains "as my-library")
+      --message="Did not expect `as my-library` when prefix matches segment"
+
+test-import-explicit-rename-prefix:
+  // When the prefix differs from the last segment, `as prefix` must be kept.
+  imp := toit-gen.Import ["my-library"]
+  imp.preferred-prefix = "lib"
+
+  target := toit-gen.VarDefinition.local "t" --initial=(toit-gen.Literal null)
+  target.name = "t"
+  ref := toit-gen.ImportedRef imp target
+
+  fun := toit-gen.Function "use" --parameters=[] --return-type=null
+  seq := toit-gen.Sequence
+  seq.add (toit-gen.ExpressionStatement ref)
+  fun.body = seq
+
+  lib := toit-gen.Library "test-import-rename.toit"
+  lib.imports.add imp
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-import-rename.toit"]
+
+  expect (code.contains "import my-library as lib show t")
+      --message="Expected `as lib` rename to be preserved"
+
+test-typed-positional-parameter:
+  // A positional parameter with a type renders as `name/Type`.
+  int-class := toit-gen.Class.core "int"
+
+  param := toit-gen.VarDefinition.parameter "x" --type=(toit-gen.Ref int-class)
+  fun := toit-gen.Function "foo" --parameters=[param] --return-type=null
+  seq := toit-gen.Sequence
+  fun.body = seq
+
+  lib := toit-gen.Library "test-typed-positional.toit"
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-typed-positional.toit"]
+
+  expect (code.contains "foo x/int:")
+      --message="Expected typed positional parameter `x/int`"
+
+test-typed-named-parameter:
+  // A named parameter with a type renders as `--name/Type`.
+  int-class := toit-gen.Class.core "int"
+
+  param := toit-gen.VarDefinition.parameter "limit"
+      --type=(toit-gen.Ref int-class)
+      --is-named=true
+  fun := toit-gen.Function "foo" --parameters=[param] --return-type=null
+  seq := toit-gen.Sequence
+  fun.body = seq
+
+  lib := toit-gen.Library "test-typed-named.toit"
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-typed-named.toit"]
+
+  expect (code.contains "foo --limit/int:")
+      --message="Expected typed named parameter `--limit/int`"
+
+test-nullable-named-parameter:
+  // A nullable named parameter renders as `--name/Type?`.
+  int-class := toit-gen.Class.core "int"
+
+  param := toit-gen.VarDefinition.parameter "limit"
+      --type=(toit-gen.Ref int-class)
+      --is-named=true
+      --is-nullable=true
+  fun := toit-gen.Function "foo" --parameters=[param] --return-type=null
+  seq := toit-gen.Sequence
+  fun.body = seq
+
+  lib := toit-gen.Library "test-nullable-named.toit"
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-nullable-named.toit"]
+
+  expect (code.contains "foo --limit/int?:")
+      --message="Expected nullable named parameter `--limit/int?`"
+
+test-parameter-with-default:
+  // A parameter with an `initial` Expression renders as `name=value`.
+  int-class := toit-gen.Class.core "int"
+
+  param := toit-gen.VarDefinition.parameter "x"
+      --type=(toit-gen.Ref int-class)
+      --initial=(toit-gen.Literal 42)
+  fun := toit-gen.Function "foo" --parameters=[param] --return-type=null
+  seq := toit-gen.Sequence
+  fun.body = seq
+
+  lib := toit-gen.Library "test-param-default.toit"
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-param-default.toit"]
+
+  expect (code.contains "foo x/int=42:")
+      --message="Expected parameter with default `x/int=42`"
+
+test-named-nullable-with-null-default:
+  // The common openapi shape: --name/Type?=null.
+  int-class := toit-gen.Class.core "int"
+
+  param := toit-gen.VarDefinition.parameter "limit"
+      --type=(toit-gen.Ref int-class)
+      --is-named=true
+      --is-nullable=true
+      --initial=(toit-gen.Literal null)
+  fun := toit-gen.Function "foo" --parameters=[param] --return-type=null
+  seq := toit-gen.Sequence
+  fun.body = seq
+
+  lib := toit-gen.Library "test-nullable-default.toit"
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-nullable-default.toit"]
+
+  expect (code.contains "foo --limit/int?=null:")
+      --message="Expected named nullable parameter with null default"
+
+test-library-helpers:
+  // Library.add-import / add-class / add-function add and return.
+  lib := toit-gen.Library "test-lib-helpers.toit"
+
+  // Package-based import; auto-inferred preferred-prefix.
+  my-lib-pkg := toit-gen.Package --prefix="my-lib" --id="github.com/example/my-lib"
+  imp := lib.add-import my-lib-pkg
+  expect-equals 1 lib.imports.size
+  expect-identical imp lib.imports[0]
+  expect-equals "my-lib" imp.preferred-prefix
+  expect-identical my-lib-pkg imp.package
+
+  // --module attaches a submodule path; prefix is the last segment.
+  foo-pkg := toit-gen.Package --prefix="foo" --id="github.com/example/foo"
+  imp2 := lib.add-import foo-pkg --module="bar"
+  expect-equals ["foo", "bar"] imp2.segments
+  expect-equals "bar" imp2.preferred-prefix
+
+  // Explicit --preferred-prefix overrides the auto-inferred one.
+  imp3 := lib.add-import my-lib-pkg --preferred-prefix="renamed"
+  expect-equals "renamed" imp3.preferred-prefix
+
+  cls := lib.add-class "MyClass"
+  expect-equals 1 lib.classes.size
+  expect-identical cls lib.classes[0]
+  expect-equals toit-gen.Class.CLASS cls.kind
+
+  fn := lib.add-function "free" --parameters=[] --return-type=null
+  expect-equals 1 lib.functions.size
+  expect-identical fn lib.functions[0]
+
+  program := toit-gen.Program
+  program.libraries.add lib
+  generated := program.gen --in-memory
+  code := generated["test-lib-helpers.toit"]
+
+  expected := """
+    class MyClass:
+
+    free:"""
+  expect-equals expected code.trim
+
+test-class-helpers:
+  // Class.add-field / add-method / add-constructor / add-named-constructor
+  // add and return.
+  cls := toit-gen.Class "Box" --kind=toit-gen.Class.CLASS
+
+  int-class := toit-gen.Class.core "int"
+  field := cls.add-field "value"
+      --type=(toit-gen.Ref int-class)
+      --is-final=false
+      --initial=(toit-gen.Literal 0)
+  expect-identical field cls.fields[0]
+
+  method-body := toit-gen.Sequence
+  method-body.ret (toit-gen.Ref field)
+  m := cls.add-method "get-value"
+      --parameters=[]
+      --return-type=(toit-gen.Ref int-class)
+      method-body
+  expect-identical m cls.members[0]
+
+  ctor-body := toit-gen.Sequence
+  ctor-body.assign field (toit-gen.Literal 1)
+  ctor := cls.add-constructor ctor-body
+  expect-identical ctor cls.members[1]
+
+  named-ctor-body := toit-gen.Sequence
+  named-ctor-body.assign field (toit-gen.Literal 2)
+  named-ctor := cls.add-named-constructor "two" named-ctor-body
+  expect-identical named-ctor cls.members[2]
+
+  lib := toit-gen.Library "test-class-helpers.toit"
+  lib.classes.add cls
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-class-helpers.toit"]
+
+  expect (code.contains "value/int := 0")
+      --message="Expected field added by add-field"
+  expect (code.contains "get-value -> int:")
+      --message="Expected method added by add-method"
+  expect (code.contains "constructor:")
+      --message="Expected unnamed constructor added by add-constructor"
+  expect (code.contains "constructor.two:")
+      --message="Expected named constructor added by add-named-constructor"
+
+test-sequence-invoke:
+  // Sequence.invoke wraps Call(target, method-name) in a Statement.
+  obj-var := toit-gen.VarDefinition.local "obj" --initial=(toit-gen.Literal null)
+  obj-var.name = "obj"
+
+  seq := toit-gen.Sequence
+  seq.invoke (toit-gen.Ref obj-var) "close"
+  seq.invoke (toit-gen.Ref obj-var) "set" --arguments=[toit-gen.Literal "k", toit-gen.Literal "v"]
+
+  fun := toit-gen.Function "use" --parameters=[] --return-type=null
+  fun.body = seq
+
+  lib := toit-gen.Library "test-invoke.toit"
+  lib.globals.add obj-var
+  lib.functions.add fun
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-invoke.toit"]
+
+  expect (code.contains "obj.close")
+      --message="Expected `obj.close` from invoke"
+  expect (code.contains "obj.set \"k\" \"v\"")
+      --message="Expected `obj.set` from invoke with arguments"
+
+test-import-refer:
+  // Import.refer creates an ImportedRef bound to this import.
+  imp := toit-gen.Import ["my-lib"]
+  imp.preferred-prefix = "lib"
+
+  target := toit-gen.VarDefinition.local "x" --initial=(toit-gen.Literal null)
+  target.name = "x"
+
+  ref := imp.refer target
+  expect-identical imp ref.imp
+  expect-identical target ref.target
+
+  fun := toit-gen.Function "use" --parameters=[] --return-type=null
+  body := toit-gen.Sequence
+  body.add (toit-gen.ExpressionStatement ref)
+  fun.body = body
+
+  lib := toit-gen.Library "test-refer.toit"
+  lib.imports.add imp
+  lib.functions.add fun
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-refer.toit"]
+
+  expect (code.contains "lib.x")
+      --message="Expected `lib.x` rendering for ImportedRef from Import.refer"
+
+test-named-named-constructor:
+  // Named.named auto-builds the parameter VarDefinition from a string.
+  arg := toit-gen.Named.named "all" (toit-gen.Literal "x")
+  expect-equals "all" arg.parameter.name
+
+  callee := toit-gen.Function "callee" --parameters=[] --return-type=null
+  callee.name = "callee"
+
+  call-expr := toit-gen.Call (toit-gen.Ref callee) --arguments=[arg]
+  body := toit-gen.Sequence
+  body.add (toit-gen.ExpressionStatement call-expr)
+  caller := toit-gen.Function "caller" --parameters=[] --return-type=null
+  caller.body = body
+
+  lib := toit-gen.Library "test-named-named.toit"
+  lib.functions.add callee
+  lib.functions.add caller
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-named-named.toit"]
+
+  expect (code.contains "--all=\"x\"")
+      --message="Expected `--all=\"x\"` from Named.named"

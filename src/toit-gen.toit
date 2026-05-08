@@ -80,10 +80,10 @@ class Program extends BaseNode_:
       global-namer/GlobalNamer := namers[library]
       library.classes.do: | cls/Class |
         if not cls.name:
-          cls.name = global-namer.use-class cls.preferred-name
+          cls.name = global-namer.use-class cls.preferred-name --private=cls.is-private
       library.globals.do: | g/VarDefinition |
         if not g.name:
-          g.name = global-namer.use-global g.preferred-name
+          g.name = global-namer.use-global g.preferred-name --private=g.is-private
 
     // Phase 3: Assign function names, field names, and static field names.
     // Uses shared naming so that overloaded functions and fields with
@@ -93,22 +93,22 @@ class Program extends BaseNode_:
       global-cache := {:}
       library.functions.do: | fun/Function |
         if not fun.name:
-          fun.name = global-namer.use-shared-global fun.preferred-name --cache=global-cache
+          fun.name = global-namer.use-shared-global fun.preferred-name --private=fun.is-private --cache=global-cache
       library.classes.do: | cls/Class |
         member-namer/MemberNamer := namers[cls]
         member-cache := {:}
         cls.members.do: | fun/Function |
           if not fun.name:
-            fun.name = member-namer.use-shared-member fun.preferred-name --private=fun.is-static --cache=member-cache
+            fun.name = member-namer.use-shared-member fun.preferred-name --private=fun.is-private --cache=member-cache
         cls.static-functions.do: | fun/Function |
           if not fun.name:
-            fun.name = member-namer.use-shared-member fun.preferred-name --private=fun.is-static --cache=member-cache
+            fun.name = member-namer.use-shared-member fun.preferred-name --private=fun.is-private --cache=member-cache
         cls.fields.do: | field/VarDefinition |
           if not field.name:
-            field.name = member-namer.use-shared-member field.preferred-name --cache=member-cache
+            field.name = member-namer.use-shared-member field.preferred-name --private=field.is-private --cache=member-cache
         cls.static-fields.do: | field/VarDefinition |
           if not field.name:
-            field.name = member-namer.use-shared-member field.preferred-name --cache=member-cache
+            field.name = member-namer.use-shared-member field.preferred-name --private=field.is-private --cache=member-cache
 
     // Phase 4: Assign named parameter names.
     // Uses shared naming so overloaded functions with the same named
@@ -204,6 +204,128 @@ class Library extends BaseNode_:
     visitor := GeneratingVisitor context
     visitor.visit-Library this
 
+  /**
+  Creates an $Import for $package, adds it to this library, and returns it.
+
+  $module is an optional dot-separated submodule path within the package,
+    e.g. `"client"` for `import http.client`. If null, the import targets
+    the package's main module (`import http`).
+
+  The import's $Import.preferred-prefix defaults to $preferred-prefix when
+    given, otherwise to the last segment of the resolved path — so
+    `add-import http-pkg` (with `http-pkg.prefix == "http"`) yields a prefix
+    of `"http"` and renders as `import http`. The redundant
+    `import http as http` form is suppressed by the renderer.
+
+  The resulting $Import retains a reference to $package via $Import.package
+    so downstream tooling (e.g. `package.yaml` emitters) can recover the
+    package id.
+  */
+  add-import package/Package
+      --module/string?=null
+      --preferred-prefix/string?=null
+      --show-all/bool=false -> Import:
+    segments := [package.prefix]
+    if module: segments.add-all (module.split ".")
+    prefix := preferred-prefix != null ? preferred-prefix : segments.last
+    imp := Import segments
+        --preferred-prefix=prefix
+        --package=package
+        --show-all=show-all
+    imports.add imp
+    return imp
+
+  /**
+  Creates a relative $Import for $path, adds it to this library, and
+    returns it.
+
+  $path is a dot-separated chain of segments without the leading dot, so
+    `add-relative-import "openapi"` renders as `import .openapi`.
+  */
+  add-relative-import path/string
+      --preferred-prefix/string?=null
+      --show-all/bool=false -> Import:
+    segments := path.split "."
+    prefix := preferred-prefix != null ? preferred-prefix : segments.last
+    imp := Import segments
+        --preferred-prefix=prefix
+        --is-relative=true
+        --show-all=show-all
+    imports.add imp
+    return imp
+
+  /**
+  Creates a $Class with $preferred-name, adds it to this library, and returns it.
+  */
+  add-class preferred-name/string
+      --kind/int=Class.CLASS
+      --is-abstract/bool=false
+      --is-private/bool=false
+      --super-class/Ref?=null -> Class:
+    cls := Class preferred-name
+        --kind=kind
+        --is-abstract=is-abstract
+        --is-private=is-private
+        --super-class=super-class
+    classes.add cls
+    return cls
+
+  /**
+  Creates a $Function with $preferred-name, adds it to this library's
+    top-level functions, and returns it.
+  */
+  add-function preferred-name/string
+      --parameters/List
+      --return-type/Ref?=null
+      --is-abstract/bool=false
+      --is-private/bool=false
+      body/Statement?=null -> Function:
+    fn := Function preferred-name
+        --parameters=parameters
+        --return-type=return-type
+        --is-abstract=is-abstract
+        --is-private=is-private
+        body
+    functions.add fn
+    return fn
+
+/**
+A Toit package referenced by one or more $Import declarations.
+
+Carries the package's identity ($id) — typically a URL like
+  `github.com/toitware/pkg-http` — alongside the $prefix as declared in
+  `package.yaml`. The $prefix is also the first segment of import paths
+  for this package.
+
+For modules that ship with the SDK and don't have a package id (e.g.
+  `core`, `net`), use $Package.sdk.
+*/
+class Package:
+  /**
+  The package id, typically a URL like `github.com/toitware/pkg-http`.
+
+  null for packages bundled with the SDK.
+  */
+  id/string?
+  /**
+  The prefix as declared in `package.yaml` and used as the first segment
+    of import paths for this package.
+  */
+  prefix/string
+
+  constructor --.prefix --.id:
+
+  /**
+  Constructs a $Package for an SDK-bundled module — one that has no
+    package id and is imported by its bare $prefix.
+  */
+  constructor.sdk --.prefix:
+    id = null
+
+  /// Whether this package is bundled with the SDK (no $id).
+  is-sdk -> bool:
+    return id == null
+
 /**
 An import declaration.
 */
@@ -213,18 +335,32 @@ class Import extends BaseNode_:
   preferred-prefix/string? := null
   prefix/string? := null
   show-all/bool
+  /**
+  The owning $Package, if any.
+
+  null for relative imports and for $Import instances built without a
+    package (e.g. raw `core` imports).
+  */
+  package/Package? := null
   refs/List ::= []  // Of ImportedRef.
 
   constructor .segments
       --.preferred-prefix=null
       --.is-relative=false
-      --.show-all=false:
+      --.show-all=false
+      --.package=null:
 
   accept visitor/NodeVisitor -> any:
     return visitor.visit-Import this
 
   is-core -> bool:
     return segments.size == 1 and segments[0] == "core"
+
+  /**
+  Creates an $ImportedRef to $target through this import.
+  */
+  refer target/RefTarget -> ImportedRef:
+    return ImportedRef this target
 
 /**
 An export declaration.
@@ -251,12 +387,13 @@ class Class extends BaseNode_ implements RefTarget:
   static-fields/List ::= []
   static-functions/List ::= []
   is-abstract/bool := false
+  is-private/bool := false
   super-class/Ref? := null
   interfaces/List ::= []  // Of Ref.
   mixins/List ::= []  // Of Ref.
   toitdoc/List? := null
 
-  constructor .preferred-name --.is-abstract=false --.kind --.super-class=null:
+  constructor .preferred-name --.is-abstract=false --.is-private=false --.kind --.super-class=null:
 
   /**
   A core class.
@@ -269,8 +406,77 @@ class Class extends BaseNode_ implements RefTarget:
     is-abstract = false
     super-class = null
 
+  /**
+  A stub for a class imported from another package.
+
+  Should only be used as a $RefTarget — typically combined with $Import.refer
+    to produce a prefixed $ImportedRef. Like $Class.core, this constructor
+    fixes the rendered $name and skips the naming phase, since the class
+    isn't part of the generated output.
+  */
+  constructor.imported .name/string:
+    kind = CLASS
+    preferred-name = name
+    is-abstract = false
+    super-class = null
+
   accept visitor/NodeVisitor -> any:
     return visitor.visit-Class this
+
+  /**
+  Creates a $VarDefinition.field with $preferred-name, appends it to this
+    class's $fields, and returns it.
+  */
+  add-field preferred-name/string
+      --type/Ref?=null
+      --is-nullable/bool=false
+      --is-final/bool=true
+      --is-private/bool=false
+      --initial/Expression?=null -> VarDefinition:
+    field := VarDefinition.field preferred-name
+        --type=type
+        --is-nullable=is-nullable
+        --is-final=is-final
+        --is-private=is-private
+        --initial=initial
+    fields.add field
+    return field
+
+  /**
+  Creates a $Function with $preferred-name, appends it to this class's
+    $members, and returns it.
+  */
+  add-method preferred-name/string
+      --parameters/List
+      --return-type/Ref?=null
+      --is-abstract/bool=false
+      --is-private/bool=false
+      body/Statement?=null -> Function:
+    fn := Function preferred-name
+        --parameters=parameters
+        --return-type=return-type
+        --is-abstract=is-abstract
+        --is-private=is-private
+        body
+    members.add fn
+    return fn
+
+  /**
+  Creates an unnamed `constructor`, appends it to this class's $members, and returns it.
+  */
+  add-constructor --parameters/List=[] body/Statement?=null -> Function:
+    constr := Function.constr --parameters=parameters body
+    members.add constr
+    return constr
+
+  /**
+  Creates a named constructor (`constructor.$name`), appends it to this
+    class's $members, and returns it.
+  */
+  add-named-constructor name/string --parameters/List=[] body/Statement?=null -> Function:
+    constr := Function.constr --name=name --parameters=parameters body
+    members.add constr
+    return constr
 
 /**
 A Toit function or method.
@@ -282,7 +488,7 @@ class Function extends BaseNode_ implements RefTarget:
   return-type/Ref?
   body/Statement? := null
   is-abstract/bool
-  is-static/bool
+  is-private/bool
   is-constructor/bool := false
   toitdoc/List? := null
 
@@ -290,7 +496,7 @@ class Function extends BaseNode_ implements RefTarget:
       --.parameters
       --.return-type
       --.is-abstract=false
-      --.is-static=false
+      --.is-private=false
       .body=null:
 
   constructor.constr --.parameters --name/string?=null .body=null:
@@ -300,7 +506,7 @@ class Function extends BaseNode_ implements RefTarget:
     else:
       preferred-name = name
     is-abstract = false
-    is-static = false
+    is-private = false
     return-type = null
     is-constructor = true
 
@@ -336,6 +542,7 @@ class VarDefinition extends BaseNode_ implements RefTarget:
   is-block/bool
   is-named/bool
   is-final/bool
+  is-private/bool
   toitdoc/List? := null
 
   constructor.parameter .preferred-name
@@ -344,7 +551,8 @@ class VarDefinition extends BaseNode_ implements RefTarget:
       --.is-block=false
       --.is-named=false
       --.is-nullable=false
-      --.is-final=false:
+      --.is-final=false
+      --.is-private=false:
 
   constructor.ignored:
     preferred-name = "_"
@@ -355,6 +563,7 @@ class VarDefinition extends BaseNode_ implements RefTarget:
     initial = null
     type = null
     is-final = false
+    is-private = false
 
   constructor.it:
     preferred-name = "it"
@@ -365,11 +574,13 @@ class VarDefinition extends BaseNode_ implements RefTarget:
     initial = null
     type = null
     is-final = false
+    is-private = false
 
   constructor.local .preferred-name
       --.type=null
       --.is-nullable=false
       --.is-final=false
+      --.is-private=false
       --.initial/Expression:
     is-block = false
     is-named = false
@@ -378,6 +589,7 @@ class VarDefinition extends BaseNode_ implements RefTarget:
       --.type=null
       --.is-nullable=false
       --.is-final=true
+      --.is-private=false
       --.initial/Expression?:
     is-block = false
     is-named = false
@@ -443,6 +655,13 @@ class Sequence extends Statement:
   /** Calls $target with multiple $arguments. */
   call target/Expression --arguments/List -> none:
     expr := Call target --arguments=arguments
+    add (Statement expr)
+
+  /**
+  Adds a method-call statement: `$target.$method-name $arguments...`.
+  */
+  invoke target/Expression method-name/string --arguments/List=[] -> none:
+    expr := Call target method-name --arguments=arguments
     add (Statement expr)
 
   /** Adds an if statement. */
@@ -752,6 +971,18 @@ class Named extends Expression:
   value/Expression
 
   constructor .parameter .value:
+
+  /**
+  Creates a $Named whose parameter $VarDefinition is constructed on the fly
+    from $name.
+
+  Convenient for call-site arguments where the callee's $VarDefinition isn't
+    handy. Use the regular constructor when the callee's parameter exists
+    already.
+  */
+  constructor.named name/string .value:
+    parameter = VarDefinition.parameter name
+    parameter.name = name
 
   accept visitor/NodeVisitor -> any:
     return visitor.visit-Named this
