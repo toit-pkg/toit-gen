@@ -14,6 +14,7 @@ main:
   test-abstract-method
   test-super-call
   test-throw
+  test-nullable-field
 
 test-basic-class:
   cls := toit-gen.Class "MyClass" --kind=toit-gen.Class.CLASS
@@ -221,3 +222,33 @@ test-throw:
 
   expect (code.contains "throw \"something went wrong\"")
       --message="Expected throw statement"
+
+test-nullable-field:
+  // is-nullable on a field renders `?` after the type.
+  string-class := toit-gen.Class.core "string"
+
+  cls := toit-gen.Class "MyClass" --kind=toit-gen.Class.CLASS
+
+  required-field := toit-gen.VarDefinition.field "name"
+      --type=(toit-gen.Ref string-class)
+      --initial=(toit-gen.Literal "")
+      --is-final=false
+  optional-field := toit-gen.VarDefinition.field "nick"
+      --type=(toit-gen.Ref string-class)
+      --is-nullable=true
+      --initial=(toit-gen.Literal null)
+      --is-final=false
+  cls.fields.add required-field
+  cls.fields.add optional-field
+
+  lib := toit-gen.Library "test.toit"
+  lib.classes.add cls
+  program := toit-gen.Program
+  program.libraries.add lib
+  generated := program.gen --in-memory
+  code := generated["test.toit"]
+
+  expect (code.contains "name/string := \"\"")
+      --message="Expected non-nullable field without `?`"
+  expect (code.contains "nick/string? := null")
+      --message="Expected nullable field with `?` after type"

@@ -257,6 +257,7 @@ class GeneratingVisitor implements NodeVisitor:
       context.write field.name
       if field.type:
         context.write "/$(field.type.target.name)"
+        if field.is-nullable: context.write "?"
         if field.initial:
           if field.is-final: context.write " ::= "
           else: context.write " := "
