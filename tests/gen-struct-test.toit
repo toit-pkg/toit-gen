@@ -150,7 +150,7 @@ test-imports-and-exports:
   code := generated["test-imports-and-exports.toit"]
 
   expected := """
-    import my-library as lib show MyClass t
+    import my-library as lib
 
     export OtherClass
 
@@ -291,8 +291,10 @@ test-import-without-redundant-prefix:
   generated := program.gen --in-memory
   code := generated["test-import-redundant.toit"]
 
-  expect (code.contains "import my-library show t")
-      --message="Expected `import my-library show t` without redundant `as`"
+  expect (code.contains "import my-library")
+      --message="Expected plain `import my-library` without redundant `as`"
+  expect-not (code.contains "show t")
+      --message="No `show t` clause is emitted; refs use the `my-library` prefix"
   expect-not (code.contains "as my-library")
       --message="Did not expect `as my-library` when prefix matches segment"
 
@@ -320,8 +322,10 @@ test-import-explicit-rename-prefix:
   generated := program.gen --in-memory
   code := generated["test-import-rename.toit"]
 
-  expect (code.contains "import my-library as lib show t")
+  expect (code.contains "import my-library as lib")
       --message="Expected `as lib` rename to be preserved"
+  expect-not (code.contains "show t")
+      --message="No `show t` clause is emitted; refs use the `lib` prefix"
 
 test-typed-positional-parameter:
   // A positional parameter with a type renders as `name/Type`.

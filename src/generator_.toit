@@ -213,13 +213,13 @@ class GeneratingVisitor implements NodeVisitor:
     if node.prefix and node.prefix != node.segments.last:
       line += " as $(node.prefix)"
 
+    // ImportedRef always emits its target through the import's prefix
+    //   (see $visit-ImportedRef), so emitting `show <names>` here would
+    //   shadow the prefix and produce code that fails to compile. A
+    //   `show *` is still safe — it adds the names to scope without
+    //   removing the prefix.
     if node.show-all:
       line += " show *"
-    else if not node.refs.is-empty:
-      line += " show "
-      ref-name-set := {}
-      node.refs.do: | ref/ImportedRef | ref-name-set.add ref.target.name
-      line += (ref-name-set.to-list).join " "
     context.write-line line
     return null
 
