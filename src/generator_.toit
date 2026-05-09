@@ -588,8 +588,14 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-ImportedRef node/ImportedRef -> any:
-    if node.imp.prefix: context.write "$node.imp.prefix.$node.target.name"
-    else: context.write node.target.name
+    // Relative imports (`import .foo`) bring names into scope directly;
+    //   Toit doesn't bind `foo` as a prefix the way it does for package
+    //   imports, so emitting `foo.Bar` would not compile. The same is
+    //   true even with `as foo` or `show *`.
+    if node.imp.is-relative or not node.imp.prefix:
+      context.write node.target.name
+    else:
+      context.write "$node.imp.prefix.$node.target.name"
     return null
 
   visit-As node/As -> any:
