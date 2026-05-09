@@ -281,7 +281,8 @@ class GeneratingVisitor implements NodeVisitor:
     if in-static_: context.write "static "
     context.write field.name
     if field.type:
-      context.write "/$(field.type.target.name)"
+      context.write "/"
+      field.type.accept this
       if field.is-nullable: context.write "?"
       if field.initial:
         if field.is-final: context.write " ::= "
@@ -325,7 +326,8 @@ class GeneratingVisitor implements NodeVisitor:
 
     if not node.is-constructor:
       if node.return-type:
-        context.write " -> $(node.return-type.target.name)"
+        context.write " -> "
+        node.return-type.accept this
 
     if not node.is-abstract and not is-interface-member:
       context.write ":"
@@ -348,7 +350,8 @@ class GeneratingVisitor implements NodeVisitor:
     if param.is-named: context.write "--"
     context.write param.name
     if param.type:
-      context.write "/$(param.type.target.name)"
+      context.write "/"
+      param.type.accept this
       if param.is-nullable: context.write "?"
     if param.initial:
       context.write "="
