@@ -16,6 +16,7 @@ main:
   test-nested-calls
   test-named-true-shorthand
   test-named-false-shorthand
+  test-ternary
 test-block-vs-named:
   list-ref-var := toit-gen.VarDefinition.local "list" --initial=(toit-gen.Literal [])
   list-ref-var.name = "list"
@@ -561,3 +562,31 @@ test-named-false-shorthand:
       --message="Expected `--no-flag` shorthand for Named with Literal false"
   expect-not (code.contains "--flag=false")
       --message="Did not expect explicit `=false`"
+
+test-ternary:
+  // Tests Ternary expression rendering: a == null ? null : a.foo
+
+  a-var := toit-gen.VarDefinition.local "a" --initial=(toit-gen.Literal null)
+  a-var.name = "a"
+  a-ref := toit-gen.Ref a-var
+  null-lit := toit-gen.Literal null
+  cond := toit-gen.Binary a-ref "==" null-lit
+  else-call := toit-gen.Call a-ref "foo"
+  ternary := toit-gen.Ternary cond null-lit else-call
+
+  seq := toit-gen.Sequence
+  seq.add (toit-gen.ExpressionStatement ternary)
+
+  fun := toit-gen.Function "wrap" --parameters=[] --return-type=null
+  fun.body = seq
+  lib := toit-gen.Library "test-ternary.toit"
+  lib.functions.add fun
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-ternary.toit"]
+  expected := """
+    wrap:
+      (a == null) ? null : a.foo"""
+  expect-equals expected code.trim

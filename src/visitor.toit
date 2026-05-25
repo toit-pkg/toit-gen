@@ -48,6 +48,7 @@ interface NodeVisitor:
   visit-As node/As -> any
   visit-Is node/Is -> any
   visit-Binary node/Binary -> any
+  visit-Ternary node/Ternary -> any
   visit-Unary node/Unary -> any
   visit-Named node/Named -> any
   visit-StringInterpolation node/StringInterpolation -> any
@@ -206,6 +207,12 @@ class TraversingVisitor implements NodeVisitor:
   visit-Binary node/Binary -> any:
     node.left.accept this
     node.right.accept this
+    return null
+
+  visit-Ternary node/Ternary -> any:
+    node.condition.accept this
+    node.then-value.accept this
+    node.else-value.accept this
     return null
 
   visit-Unary node/Unary -> any:
