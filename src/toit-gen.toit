@@ -964,6 +964,19 @@ class Binary extends Expression:
     return visitor.visit-Binary this
 
 /**
+A ternary conditional expression `condition ? then-value : else-value`.
+*/
+class Ternary extends Expression:
+  condition/Expression
+  then-value/Expression
+  else-value/Expression
+
+  constructor .condition .then-value .else-value:
+
+  accept visitor/NodeVisitor -> any:
+    return visitor.visit-Ternary this
+
+/**
 A named argument.
 */
 class Named extends Expression:

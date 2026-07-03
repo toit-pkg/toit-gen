@@ -180,6 +180,7 @@ class GeneratingVisitor implements NodeVisitor:
         if target-def is Function and (target-def as Function).is-constructor: return true
       return false
     if node is Binary: return true
+    if node is Ternary: return true
     if node is Unary: return true
     if node is As: return true
     if node is Is: return true
@@ -616,6 +617,14 @@ class GeneratingVisitor implements NodeVisitor:
     write-arg_ node.left
     context.write " $node.op "
     write-arg_ node.right
+    return null
+
+  visit-Ternary node/Ternary -> any:
+    write-arg_ node.condition
+    context.write " ? "
+    write-arg_ node.then-value
+    context.write " : "
+    write-arg_ node.else-value
     return null
 
   visit-Named node/Named -> any:
