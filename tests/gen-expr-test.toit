@@ -14,6 +14,8 @@ main:
   test-control-flow
   test-block-vs-named
   test-nested-calls
+  test-named-true-shorthand
+  test-named-false-shorthand
 test-block-vs-named:
   list-ref-var := toit-gen.VarDefinition.local "list" --initial=(toit-gen.Literal [])
   list-ref-var.name = "list"
@@ -499,3 +501,63 @@ test-nested-calls:
     wrap2:
       my-function (1 + (other-function 2))"""
   expect-equals expected code.trim
+
+test-named-true-shorthand:
+  // A Named arg whose value is `Literal true` renders as `--flag` (Toit's
+  // shorthand) rather than the explicit `--flag=true`.
+  callee := toit-gen.Function "callee" --parameters=[] --return-type=null
+  callee.name = "callee"
+
+  flag-param := toit-gen.VarDefinition.parameter "flag" --is-named=true
+  flag-param.name = "flag"
+  named-true := toit-gen.Named flag-param (toit-gen.Literal true)
+  call-expr := toit-gen.Call (toit-gen.Ref callee) --arguments=[named-true]
+
+  caller-body := toit-gen.Sequence
+  caller-body.add (toit-gen.ExpressionStatement call-expr)
+  caller := toit-gen.Function "caller" --parameters=[] --return-type=null
+  caller.body = caller-body
+
+  lib := toit-gen.Library "test-named-true.toit"
+  lib.functions.add callee
+  lib.functions.add caller
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-named-true.toit"]
+
+  expect (code.contains "callee --flag\n")
+      --message="Expected `--flag` shorthand for Named with Literal true"
+  expect-not (code.contains "--flag=true")
+      --message="Did not expect explicit `=true`"
+
+test-named-false-shorthand:
+  // A Named arg whose value is `Literal false` renders as `--no-flag` (Toit's
+  // shorthand) rather than the explicit `--flag=false`.
+  callee := toit-gen.Function "callee" --parameters=[] --return-type=null
+  callee.name = "callee"
+
+  flag-param := toit-gen.VarDefinition.parameter "flag" --is-named=true
+  flag-param.name = "flag"
+  named-false := toit-gen.Named flag-param (toit-gen.Literal false)
+  call-expr := toit-gen.Call (toit-gen.Ref callee) --arguments=[named-false]
+
+  caller-body := toit-gen.Sequence
+  caller-body.add (toit-gen.ExpressionStatement call-expr)
+  caller := toit-gen.Function "caller" --parameters=[] --return-type=null
+  caller.body = caller-body
+
+  lib := toit-gen.Library "test-named-false.toit"
+  lib.functions.add callee
+  lib.functions.add caller
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-named-false.toit"]
+
+  expect (code.contains "callee --no-flag\n")
+      --message="Expected `--no-flag` shorthand for Named with Literal false"
+  expect-not (code.contains "--flag=false")
+      --message="Did not expect explicit `=false`"

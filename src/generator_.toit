@@ -166,6 +166,7 @@ class GeneratingVisitor implements NodeVisitor:
   context/WriteContext_
   omit-trailing-newline_/bool := false
   current-class_/Class? := null
+  in-static_/bool := false
 
   constructor .context:
 
@@ -208,16 +209,17 @@ class GeneratingVisitor implements NodeVisitor:
     line := "import "
     if node.is-relative: line += "."
     line += node.segments.join "."
-    if node.prefix:
+    // Toit's implicit prefix is the last segment; suppress `as` when redundant.
+    if node.prefix and node.prefix != node.segments.last:
       line += " as $(node.prefix)"
 
+    // ImportedRef always emits its target through the import's prefix
+    //   (see $visit-ImportedRef), so emitting `show <names>` here would
+    //   shadow the prefix and produce code that fails to compile. A
+    //   `show *` is still safe — it adds the names to scope without
+    //   removing the prefix.
     if node.show-all:
       line += " show *"
-    else if not node.refs.is-empty:
-      line += " show "
-      ref-name-set := {}
-      node.refs.do: | ref/ImportedRef | ref-name-set.add ref.target.name
-      line += (ref-name-set.to-list).join " "
     context.write-line line
     return null
 
@@ -253,64 +255,107 @@ class GeneratingVisitor implements NodeVisitor:
     context.indent
 
     node.fields.do: | field/VarDefinition |
-      write-toitdoc_ field.toitdoc
-      context.write field.name
-      if field.type:
-        context.write "/$(field.type.target.name)"
-        if field.is-nullable: context.write "?"
-        if field.initial:
-          if field.is-final: context.write " ::= "
-          else: context.write " := "
-          expr_ field.initial
-        else:
-          if not field.is-final: context.write " := ?"
-      else:
-        if field.initial:
-          if field.is-final: context.write " ::= "
-          else: context.write " := "
-          expr_ field.initial
-        else:
-          if not field.is-final: context.write " := ?"
-          else: context.write " ::= ?"
-      context.write-line ""
+      write-field_ field
+
+    node.static-fields.do: | field/VarDefinition |
+      in-static_ = true
+      write-field_ field
+      in-static_ = false
 
     node.members.do: | member/Function |
       if member.is-constructor: context.write-line ""
       member.accept this
+
+    node.static-functions.do: | fun/Function |
+      in-static_ = true
+      fun.accept this
+      in-static_ = false
 
     context.dedent
     context.write-line ""
     current-class_ = old-class
     return null
 
+  write-field_ field/VarDefinition -> none:
+    write-toitdoc_ field.toitdoc
+    if in-static_: context.write "static "
+    context.write field.name
+    if field.type:
+      context.write "/"
+      field.type.accept this
+      if field.is-nullable: context.write "?"
+      if field.initial:
+        if field.is-final: context.write " ::= "
+        else: context.write " := "
+        expr_ field.initial
+      else:
+        if not field.is-final: context.write " := ?"
+    else:
+      if field.initial:
+        if field.is-final: context.write " ::= "
+        else: context.write " := "
+        expr_ field.initial
+      else:
+        if not field.is-final: context.write " := ?"
+        else: context.write " ::= ?"
+    context.write-line ""
+
   visit-Function node/Function -> any:
     write-toitdoc_ node.toitdoc
-    line := ""
-    if node.is-abstract: line += "abstract "
+    // Interface members in Toit are implicitly abstract: no `abstract`
+    // keyword, no body, no colon (for non-constructor signatures). Factory
+    // constructors and static methods on an interface still get a body and
+    // are emitted normally.
+    is-interface-member := current-class_ != null
+        and current-class_.kind == Class.INTERFACE
+        and not node.is-constructor
+        and not in-static_
+    prefix := ""
+    if node.is-abstract and not is-interface-member: prefix += "abstract "
+    if in-static_: prefix += "static "
     if node.is-constructor and node.name != "constructor":
       // Named constructor (e.g., constructor.from-json).
-      line += "constructor.$node.name"
+      prefix += "constructor.$node.name"
     else:
-      line += "$node.name"
+      prefix += "$node.name"
+    context.write prefix
+
     node.parameters.do: | param/VarDefinition |
-      param-str := param.name
-      if param.is-named: param-str = "--$param-str"
-      line += " $param-str"
+      context.write " "
+      write-param_ param
 
     if not node.is-constructor:
       if node.return-type:
-        line += " -> $(node.return-type.target.name)"
+        context.write " -> "
+        node.return-type.accept this
 
-    if not node.is-abstract:
-      line += ":"
+    if not node.is-abstract and not is-interface-member:
+      context.write ":"
 
-    context.write-line line
+    context.write-line ""
     if node.body:
       context.indent
       node.body.accept this
       context.dedent
     context.write-line ""
     return null
+
+  /**
+  Renders a $VarDefinition in parameter position.
+
+  Handles named (`--name`), typed (`name/Type`), nullable (`name/Type?`),
+    and defaulted (`name=initial`) parameters.
+  */
+  write-param_ param/VarDefinition -> none:
+    if param.is-named: context.write "--"
+    context.write param.name
+    if param.type:
+      context.write "/"
+      param.type.accept this
+      if param.is-nullable: context.write "?"
+    if param.initial:
+      context.write "="
+      expr_ param.initial
 
   visit-VarDefinition node/VarDefinition -> any:
     return null
@@ -543,8 +588,14 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-ImportedRef node/ImportedRef -> any:
-    if node.imp.prefix: context.write "$node.imp.prefix.$node.target.name"
-    else: context.write node.target.name
+    // Relative imports (`import .foo`) bring names into scope directly;
+    //   Toit doesn't bind `foo` as a prefix the way it does for package
+    //   imports, so emitting `foo.Bar` would not compile. The same is
+    //   true even with `as foo` or `show *`.
+    if node.imp.is-relative or not node.imp.prefix:
+      context.write node.target.name
+    else:
+      context.write "$node.imp.prefix.$node.target.name"
     return null
 
   visit-As node/As -> any:
@@ -568,6 +619,16 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-Named node/Named -> any:
+    // `--flag=true` is equivalent to `--flag` in Toit, and `--flag=false` to
+    // `--no-flag`. Emit the shorthand.
+    if node.value is Literal:
+      literal-value := (node.value as Literal).value
+      if literal-value == true:
+        context.write "--$node.parameter.name"
+        return null
+      if literal-value == false:
+        context.write "--no-$node.parameter.name"
+        return null
     context.write "--$node.parameter.name="
     expr_ node.value
     return null

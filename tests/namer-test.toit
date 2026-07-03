@@ -21,6 +21,7 @@ main:
   test-global-function-and-class-member
   test-field-and-method-same-name
   test-static-function-naming
+  test-private-naming
   test-named-param-does-not-shadow-global
   test-overloaded-global-functions
   test-overloaded-members-renamed-together
@@ -326,10 +327,11 @@ test-field-and-method-same-name:
   expect-equals "value" field.name
 
 test-static-function-naming:
-  // Static functions should get private names (suffixed with _).
+  // Static functions and instance members share the member namer.
+  // With overloaded preferred names, they share the assigned name too.
   cls := toit-gen.Class "A" --kind=toit-gen.Class.CLASS
 
-  static-fun := toit-gen.Function "helper" --parameters=[] --return-type=null --is-static=true
+  static-fun := toit-gen.Function "helper" --parameters=[] --return-type=null
   cls.static-functions.add static-fun
 
   instance-fun := toit-gen.Function "helper" --parameters=[] --return-type=null
@@ -342,10 +344,41 @@ test-static-function-naming:
   program.libraries.add library
   program.gen --in-memory
 
-  // Instance member gets 'helper'.
+  // Both share the same name since they're overloads at the member level.
   expect-equals "helper" instance-fun.name
-  // Static gets 'helper_' (private suffix).
-  expect-equals "helper_" static-fun.name
+  expect-equals "helper" static-fun.name
+
+test-private-naming:
+  // Explicit is-private should yield a name suffixed with '_'.
+  cls := toit-gen.Class "A" --kind=toit-gen.Class.CLASS
+
+  priv-fun := toit-gen.Function "secret" --parameters=[] --return-type=null --is-private=true
+  cls.members.add priv-fun
+
+  pub-fun := toit-gen.Function "open" --parameters=[] --return-type=null
+  cls.members.add pub-fun
+
+  priv-field := toit-gen.VarDefinition.field "stash" --is-private=true --initial=null
+  cls.fields.add priv-field
+
+  priv-cls := toit-gen.Class "Hidden" --kind=toit-gen.Class.CLASS --is-private=true
+
+  library := toit-gen.Library "lib.toit"
+  library.classes.add cls
+  library.classes.add priv-cls
+
+  priv-global-fun := toit-gen.Function "global-secret" --parameters=[] --return-type=null --is-private=true
+  library.functions.add priv-global-fun
+
+  program := toit-gen.Program
+  program.libraries.add library
+  program.gen --in-memory
+
+  expect-equals "secret_" priv-fun.name
+  expect-equals "open" pub-fun.name
+  expect-equals "stash_" priv-field.name
+  expect-equals "Hidden_" priv-cls.name
+  expect-equals "global-secret_" priv-global-fun.name
 
 test-named-param-does-not-shadow-global:
   // A named parameter in a global function should not clash with the class name.
