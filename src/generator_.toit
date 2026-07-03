@@ -170,6 +170,28 @@ class GeneratingVisitor implements NodeVisitor:
 
   constructor .context:
 
+  /// Writes $str to the underlying $context.
+  write str/string -> none:
+    context.write str
+
+  /// Writes $line followed by a newline to the underlying $context.
+  write-line line/string="" -> none:
+    context.write-line line
+
+  /**
+  Runs $block with $in-static_ set, restoring it afterwards.
+
+  Used while rendering a class's static members so that nested renderers
+    (e.g. $write-field_ and $visit-Function) emit the `static` keyword.
+  */
+  in-static [block] -> none:
+    old := in-static_
+    in-static_ = true
+    try:
+      block.call
+    finally:
+      in-static_ = old
+
   needs-parens_ node/Expression -> bool:
     if node is Call:
       c := node as Call
@@ -198,9 +220,9 @@ class GeneratingVisitor implements NodeVisitor:
   visit-Library node/Library -> any:
     write-toitdoc_ node.toitdoc
     node.imports.do: | imp | if not imp.refs.is-empty: imp.accept this
-    if not node.imports.is-empty: context.write-line ""
+    if not node.imports.is-empty: write-line
     node.exports.do: | exp | exp.accept this
-    if not node.exports.is-empty: context.write-line ""
+    if not node.exports.is-empty: write-line
     node.globals.do: | glob | glob.accept this
     node.classes.do: | cls | cls.accept this
     node.functions.do: | fun | fun.accept this
@@ -210,25 +232,26 @@ class GeneratingVisitor implements NodeVisitor:
     line := "import "
     if node.is-relative: line += "."
     line += node.segments.join "."
-    // Toit's implicit prefix is the last segment; suppress `as` when redundant.
-    if node.prefix and node.prefix != node.segments.last:
-      line += " as $(node.prefix)"
-
-    // ImportedRef always emits its target through the import's prefix
-    //   (see $visit-ImportedRef), so emitting `show <names>` here would
-    //   shadow the prefix and produce code that fails to compile. A
-    //   `show *` is still safe — it adds the names to scope without
-    //   removing the prefix.
-    if node.show-all:
+    if node.uses-prefix:
+      // A prefix is in scope, so references qualify through it. A package
+      //   import binds its last segment implicitly, so `as` is only needed
+      //   when the prefix differs. A relative import binds no implicit
+      //   prefix, so it always needs an explicit `as`.
+      if node.is-relative or node.prefix != node.segments.last:
+        line += " as $node.prefix"
+    else if node.show-all:
+      // `show *` brings the names into scope directly, which removes the
+      //   prefix. To get both a qualified prefix and unqualified names, add
+      //   two separate imports of the same target.
       line += " show *"
-    context.write-line line
+    write-line line
     return null
 
   visit-Export node/Export -> any:
     line := "export "
     ref-names := node.exports.map: | ref/Ref | ref.target.name
     line += ref-names.join " "
-    context.write-line line
+    write-line line
     return null
 
   visit-Class node/Class -> any:
@@ -252,54 +275,54 @@ class GeneratingVisitor implements NodeVisitor:
       node.mixins.do: | ref/Ref |
         line += " $ref.target.name"
     line += ":"
-    context.write-line line
+    write-line line
     context.indent
 
     node.fields.do: | field/VarDefinition |
       write-field_ field
 
     node.static-fields.do: | field/VarDefinition |
-      in-static_ = true
-      write-field_ field
-      in-static_ = false
+      in-static: write-field_ field
 
     node.members.do: | member/Function |
-      if member.is-constructor: context.write-line ""
+      if member.is-constructor: write-line
       member.accept this
 
     node.static-functions.do: | fun/Function |
-      in-static_ = true
-      fun.accept this
-      in-static_ = false
+      in-static: fun.accept this
 
     context.dedent
-    context.write-line ""
+    write-line
     current-class_ = old-class
     return null
 
   write-field_ field/VarDefinition -> none:
     write-toitdoc_ field.toitdoc
-    if in-static_: context.write "static "
-    context.write field.name
-    if field.type:
-      context.write "/"
-      field.type.accept this
-      if field.is-nullable: context.write "?"
-      if field.initial:
-        if field.is-final: context.write " ::= "
-        else: context.write " := "
-        expr_ field.initial
-      else:
-        if not field.is-final: context.write " := ?"
-    else:
-      if field.initial:
-        if field.is-final: context.write " ::= "
-        else: context.write " := "
-        expr_ field.initial
-      else:
-        if not field.is-final: context.write " := ?"
-        else: context.write " ::= ?"
-    context.write-line ""
+    if in-static_: write "static "
+    write-var-declaration_ field
+    write-line
+
+  /**
+  Renders a $VarDefinition in declaration position: its name, an optional
+    `/Type` (with a trailing `?` when nullable), and an initializer.
+
+  A field or variable without an initializer renders the late-initialization
+    form: `:= ?` when mutable, `::= ?` for an untyped final field. A typed
+    final field is left uninitialized, to be assigned in a constructor.
+  */
+  write-var-declaration_ def/VarDefinition -> none:
+    write def.name
+    if def.type:
+      write "/"
+      def.type.accept this
+      if def.is-nullable: write "?"
+    if def.initial:
+      write (def.is-final ? " ::= " : " := ")
+      expr_ def.initial
+    else if not def.is-final:
+      write " := ?"
+    else if not def.type:
+      write " ::= ?"
 
   visit-Function node/Function -> any:
     write-toitdoc_ node.toitdoc
@@ -319,26 +342,26 @@ class GeneratingVisitor implements NodeVisitor:
       prefix += "constructor.$node.name"
     else:
       prefix += "$node.name"
-    context.write prefix
+    write prefix
 
     node.parameters.do: | param/VarDefinition |
-      context.write " "
+      write " "
       write-param_ param
 
     if not node.is-constructor:
       if node.return-type:
-        context.write " -> "
+        write " -> "
         node.return-type.accept this
 
     if not node.is-abstract and not is-interface-member:
-      context.write ":"
+      write ":"
 
-    context.write-line ""
+    write-line
     if node.body:
       context.indent
       node.body.accept this
       context.dedent
-    context.write-line ""
+    write-line
     return null
 
   /**
@@ -348,14 +371,14 @@ class GeneratingVisitor implements NodeVisitor:
     and defaulted (`name=initial`) parameters.
   */
   write-param_ param/VarDefinition -> none:
-    if param.is-named: context.write "--"
-    context.write param.name
+    if param.is-named: write "--"
+    write param.name
     if param.type:
-      context.write "/"
+      write "/"
       param.type.accept this
-      if param.is-nullable: context.write "?"
+      if param.is-nullable: write "?"
     if param.initial:
-      context.write "="
+      write "="
       expr_ param.initial
 
   visit-VarDefinition node/VarDefinition -> any:
@@ -370,17 +393,17 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-If node/If -> any:
-    context.write "if "
+    write "if "
     // We use `write-arg_` to get parenthesis around the condition if it
     // isn't simple. This is over-conservative but handles the case where
     // the condition is a call with a block argument.
     write-arg_ node.condition
-    context.write-line ":"
+    write-line ":"
     context.indent
     node.then-branch.accept this
     context.dedent
     if node.else-branch:
-      context.write-line "else:"
+      write-line "else:"
       context.indent
       node.else-branch.accept this
       context.dedent
@@ -388,43 +411,41 @@ class GeneratingVisitor implements NodeVisitor:
 
   visit-Return node/Return -> any:
     if node.value:
-      context.write "return "
+      write "return "
       expr_ node.value
     else:
-      context.write "return"
-    if not omit-trailing-newline_ and not context.is-new-line_: context.write-line ""
+      write "return"
+    if not omit-trailing-newline_ and not context.is-new-line_: write-line
     return null
 
   visit-ExpressionStatement node/ExpressionStatement -> any:
     expr_ node.expression
-    if not omit-trailing-newline_ and not context.is-new-line_: context.write-line ""
+    if not omit-trailing-newline_ and not context.is-new-line_: write-line
     return null
 
   visit-LocalDefinition node/LocalDefinition -> any:
-    def := node.definition
-    context.write "$def.name := "
-    expr_ def.initial
-    if not omit-trailing-newline_ and not context.is-new-line_: context.write-line ""
+    write-var-declaration_ node.definition
+    if not omit-trailing-newline_ and not context.is-new-line_: write-line
     return null
 
   visit-Break node/Break -> any:
     if node.value:
-      context.write "break "
+      write "break "
       write-arg_ node.value
     else:
-      context.write "break"
-    if not omit-trailing-newline_ and not context.is-new-line_: context.write-line ""
+      write "break"
+    if not omit-trailing-newline_ and not context.is-new-line_: write-line
     return null
 
   visit-Continue node/Continue -> any:
-    context.write "continue"
-    if not omit-trailing-newline_ and not context.is-new-line_: context.write-line ""
+    write "continue"
+    if not omit-trailing-newline_ and not context.is-new-line_: write-line
     return null
 
   visit-While node/While -> any:
-    context.write "while "
+    write "while "
     write-arg_ node.condition
-    context.write-line ":"
+    write-line ":"
     context.indent
     node.body.accept this
     context.dedent
@@ -433,34 +454,34 @@ class GeneratingVisitor implements NodeVisitor:
   visit-For node/For -> any:
     old-omit := omit-trailing-newline_
     omit-trailing-newline_ = true
-    context.write "for "
+    write "for "
     expr_ node.init
-    context.write "; "
+    write "; "
     expr_ node.condition
-    context.write "; "
+    write "; "
     expr_ node.update
     omit-trailing-newline_ = old-omit
-    context.write-line ":"
+    write-line ":"
     context.indent
     node.body.accept this
     context.dedent
     return null
 
   visit-TryFinally node/TryFinally -> any:
-    context.write-line "try:"
+    write-line "try:"
     context.indent
     node.body.accept this
     context.dedent
-    context.write-line "finally:"
+    write-line "finally:"
     context.indent
     node.handler.accept this
     context.dedent
     return null
 
   visit-Throw node/Throw -> any:
-    context.write "throw "
+    write "throw "
     expr_ node.value
-    context.write-line ""
+    write-line
     return null
 
   visit-Call node/Call -> any:
@@ -468,10 +489,10 @@ class GeneratingVisitor implements NodeVisitor:
     if node.method-name and (node.target is Call and not (node.target as Call).method-name and (node.target as Call).arguments.is-empty):
       target-parens = true
 
-    if target-parens: context.write "("
+    if target-parens: write "("
     expr_ node.target
-    if target-parens: context.write ")"
-    if node.method-name: context.write ".$(node.method-name)"
+    if target-parens: write ")"
+    if node.method-name: write ".$(node.method-name)"
 
     if node.arguments.is-empty: return null
 
@@ -487,39 +508,39 @@ class GeneratingVisitor implements NodeVisitor:
       if multi-block:
         // In multi-block mode, put all args on continuation lines.
         normal-args.do: | arg |
-          context.write "\n$(context.indent-string)    "
+          write "\n$(context.indent-string)    "
           write-arg_ arg
       else:
         has-named := normal-args.any: it is Named
         if normal-args.size > 2 and has-named:
-          context.write " "
+          write " "
           write-arg_ normal-args[0]
           for i := 1; i < normal-args.size; i++:
-            context.write "\n$(context.indent-string)    "
+            write "\n$(context.indent-string)    "
             write-arg_ normal-args[i]
         else:
           normal-args.do: | arg |
-            context.write " "
+            write " "
             write-arg_ arg
 
     for i := 0; i < blocks.size; i++:
       blk := blocks[i]
       if multi-block:
         // Each block on its own line, indented by 4 from the call.
-        context.write "\n$(context.indent-string)    "
+        write "\n$(context.indent-string)    "
       if blk is Named:
         n-blk := blk as Named
         if multi-block or i > 0:
-          context.write "--$(n-blk.parameter.name)="
+          write "--$(n-blk.parameter.name)="
         else:
-          context.write " --$(n-blk.parameter.name)="
+          write " --$(n-blk.parameter.name)="
         blk = n-blk.value
 
       b := blk as Block
-      context.write ":"
+      write ":"
       if not b.parameters.is-empty:
         p-names := b.parameters.map: it.name
-        context.write " | $(p-names.join " ") |"
+        write " | $(p-names.join " ") |"
 
       if multi-block:
         // Body at +4 from block header. Always omit trailing newline
@@ -534,27 +555,27 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-Index node/Index -> any:
-    if needs-parens_ node.target: context.write "("
+    if needs-parens_ node.target: write "("
     expr_ node.target
-    if needs-parens_ node.target: context.write ")"
-    context.write "["
+    if needs-parens_ node.target: write ")"
+    write "["
     expr_ node.index
-    context.write "]"
+    write "]"
     return null
 
   visit-IndexSlice node/IndexSlice -> any:
-    if needs-parens_ node.target: context.write "("
+    if needs-parens_ node.target: write "("
     expr_ node.target
-    if needs-parens_ node.target: context.write ")"
-    context.write "["
+    if needs-parens_ node.target: write ")"
+    write "["
     if node.from: expr_ node.from
-    context.write ".."
+    write ".."
     if node.to: expr_ node.to
-    context.write "]"
+    write "]"
     return null
 
   visit-Assign node/Assign -> any:
-    context.write "$node.target.name = "
+    write "$node.target.name = "
     expr_ node.value
     return null
 
@@ -562,68 +583,64 @@ class GeneratingVisitor implements NodeVisitor:
     unreachable
 
   visit-Lambda node/Lambda -> any:
-    context.write "::"
+    write "::"
     if not node.parameters.is-empty:
       p-names := node.parameters.map: it.name
-      context.write " | $(p-names.join " ") |"
+      write " | $(p-names.join " ") |"
 
     stream-block-body_ node.body true
     return null
 
   visit-Literal node/Literal -> any:
     v := node.value
-    if v is string: context.write "\"$v\""
-    else if v is int or v is float or v is bool: context.write "$v"
-    else if v == null: context.write "null"
-    else if v is List and v.is-empty: context.write "[]"
-    else if v is Map and v.is-empty: context.write "{:}"
+    if v is string: write "\"$v\""
+    else if v is int or v is float or v is bool: write "$v"
+    else if v == null: write "null"
+    else if v is List and v.is-empty: write "[]"
+    else if v is Map and v.is-empty: write "{:}"
     else: unreachable
     return null
 
   visit-LateInitialized node/LateInitialized -> any:
-    context.write "?"
+    write "?"
     return null
 
   visit-Ref node/Ref -> any:
-    context.write node.target.name
+    write node.target.name
     return null
 
   visit-ImportedRef node/ImportedRef -> any:
-    // Relative imports (`import .foo`) bring names into scope directly;
-    //   Toit doesn't bind `foo` as a prefix the way it does for package
-    //   imports, so emitting `foo.Bar` would not compile. The same is
-    //   true even with `as foo` or `show *`.
-    if node.imp.is-relative or not node.imp.prefix:
-      context.write node.target.name
+    if node.imp.uses-prefix:
+      write "$node.imp.prefix.$node.target.name"
     else:
-      context.write "$node.imp.prefix.$node.target.name"
+      write node.target.name
     return null
 
   visit-As node/As -> any:
-    if needs-parens_ node.expression: context.write "("
+    if needs-parens_ node.expression: write "("
     expr_ node.expression
-    if needs-parens_ node.expression: context.write ")"
-    context.write " as $node.type.name"
+    if needs-parens_ node.expression: write ")"
+    write " as $node.type.name"
     return null
 
   visit-Is node/Is -> any:
-    if needs-parens_ node.expression: context.write "("
+    if needs-parens_ node.expression: write "("
     expr_ node.expression
-    if needs-parens_ node.expression: context.write ")"
-    context.write " is $node.type.name"
+    if needs-parens_ node.expression: write ")"
+    write " is $node.type.name"
     return null
 
   visit-Binary node/Binary -> any:
     write-arg_ node.left
-    context.write " $node.op "
+    write " $node.op "
     write-arg_ node.right
     return null
 
   visit-Ternary node/Ternary -> any:
     write-arg_ node.condition
-    context.write " ? "
+    write " ? "
     write-arg_ node.then-value
-    context.write " : "
+    write " : "
     write-arg_ node.else-value
     return null
 
@@ -633,85 +650,85 @@ class GeneratingVisitor implements NodeVisitor:
     if node.value is Literal:
       literal-value := (node.value as Literal).value
       if literal-value == true:
-        context.write "--$node.parameter.name"
+        write "--$node.parameter.name"
         return null
       if literal-value == false:
-        context.write "--no-$node.parameter.name"
+        write "--no-$node.parameter.name"
         return null
-    context.write "--$node.parameter.name="
+    write "--$node.parameter.name="
     expr_ node.value
     return null
 
   visit-Unary node/Unary -> any:
     if node.op == "not":
-      context.write "not "
+      write "not "
       write-arg_ node.operand
     else:
-      context.write node.op
+      write node.op
       if needs-parens_ node.operand:
-        context.write "("
+        write "("
         expr_ node.operand
-        context.write ")"
+        write ")"
       else:
         expr_ node.operand
     return null
 
   visit-StringInterpolation node/StringInterpolation -> any:
-    context.write "\""
+    write "\""
     for i := 0; i < node.parts.size; i++:
       if i % 2 == 0:
-        context.write node.parts[i]
+        write node.parts[i]
       else:
         part := node.parts[i]
         if part is Ref:
-          context.write "\$$(((part as Ref).target.name))"
+          write "\$$(((part as Ref).target.name))"
         else:
-          context.write "\$("
+          write "\$("
           expr_ part
-          context.write ")"
-    context.write "\""
+          write ")"
+    write "\""
     return null
 
   visit-ListLiteral node/ListLiteral -> any:
-    context.write "["
+    write "["
     for i := 0; i < node.elements.size; i++:
-      if i > 0: context.write ", "
+      if i > 0: write ", "
       expr_ node.elements[i]
-    context.write "]"
+    write "]"
     return null
 
   visit-MapLiteral node/MapLiteral -> any:
-    context.write "{"
+    write "{"
     for i := 0; i < node.keys.size; i++:
-      if i > 0: context.write ", "
+      if i > 0: write ", "
       expr_ node.keys[i]
-      context.write ": "
+      write ": "
       expr_ node.values[i]
-    context.write "}"
+    write "}"
     return null
 
   visit-SetLiteral node/SetLiteral -> any:
-    context.write "{"
+    write "{"
     for i := 0; i < node.elements.size; i++:
-      if i > 0: context.write ", "
+      if i > 0: write ", "
       expr_ node.elements[i]
-    context.write "}"
+    write "}"
     return null
 
   visit-Super node/Super -> any:
-    context.write "super"
+    write "super"
     return null
 
   write-arg_ arg/Expression -> none:
     if needs-parens_ arg:
-      context.write "("
+      write "("
       expr_ arg
-      context.write ")"
+      write ")"
     else:
       expr_ arg
 
   stream-block-body_ body/Statement omit/bool -> none:
-    context.write-line ""
+    write-line
     context.indent
     old-omit := omit-trailing-newline_
     omit-trailing-newline_ = omit
@@ -752,8 +769,8 @@ class GeneratingVisitor implements NodeVisitor:
     text := parts.join ""
     lines := text.split "\n"
     if lines.size == 1:
-      context.write-line "/** $text */"
+      write-line "/** $text */"
     else:
-      context.write-line "/**"
-      lines.do: context.write-line it
-      context.write-line "*/"
+      write-line "/**"
+      lines.do: write-line it
+      write-line "*/"

@@ -26,6 +26,9 @@ main:
   test-class-helpers
   test-sequence-invoke
   test-import-refer
+  test-relative-import-bare
+  test-relative-import-with-prefix
+  test-import-show-all-bare
   test-named-external-constructor
   test-interface-static-method
 
@@ -486,7 +489,7 @@ test-library-helpers:
   expect-equals expected code.trim
 
 test-class-helpers:
-  // Class.add-field / add-method / add-constructor / add-named-constructor
+  // Class.add-field / add-method / add-constructor (unnamed and named)
   // add and return.
   cls := toit-gen.Class "Box" --kind=toit-gen.Class.CLASS
 
@@ -512,7 +515,7 @@ test-class-helpers:
 
   named-ctor-body := toit-gen.Sequence
   named-ctor-body.assign field (toit-gen.Literal 2)
-  named-ctor := cls.add-named-constructor "two" named-ctor-body
+  named-ctor := cls.add-constructor --name="two" named-ctor-body
   expect-identical named-ctor cls.members[2]
 
   lib := toit-gen.Library "test-class-helpers.toit"
@@ -530,7 +533,7 @@ test-class-helpers:
   expect (code.contains "constructor:")
       --message="Expected unnamed constructor added by add-constructor"
   expect (code.contains "constructor.two:")
-      --message="Expected named constructor added by add-named-constructor"
+      --message="Expected named constructor added by add-constructor --name"
 
 test-sequence-invoke:
   // Sequence.invoke wraps Call(target, method-name) in a Statement.
@@ -651,3 +654,82 @@ test-interface-static-method:
       --message="Expected instance interface member without colon"
   expect-not (code.contains "do-thing:")
       --message="Instance interface members must not have a colon"
+
+test-relative-import-bare:
+  // A relative import binds no implicit prefix, so it renders without `as`
+  // and its references are unqualified.
+  lib := toit-gen.Library "test-relative-bare.toit"
+  imp := lib.add-relative-import "openapi"
+
+  target := toit-gen.VarDefinition.local "Thing" --initial=(toit-gen.Literal null)
+  target.name = "Thing"
+  ref := imp.refer target
+
+  fun := toit-gen.Function "use" --parameters=[] --return-type=null
+  seq := toit-gen.Sequence
+  seq.add (toit-gen.ExpressionStatement ref)
+  fun.body = seq
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+  code := (program.gen --in-memory)["test-relative-bare.toit"]
+
+  expect (code.contains "import .openapi\n")
+      --message="Expected plain `import .openapi` without `as`"
+  expect-not (code.contains " as ")
+      --message="A relative import without a prefix must not render `as`"
+  expect (code.contains "  Thing")
+      --message="Expected unqualified `Thing` reference"
+
+test-relative-import-with-prefix:
+  // A relative import with an explicit prefix renders `as` and qualifies its
+  // references through it.
+  lib := toit-gen.Library "test-relative-prefix.toit"
+  imp := lib.add-relative-import "openapi" --preferred-prefix="oa"
+
+  target := toit-gen.VarDefinition.local "Thing" --initial=(toit-gen.Literal null)
+  target.name = "Thing"
+  ref := imp.refer target
+
+  fun := toit-gen.Function "use" --parameters=[] --return-type=null
+  seq := toit-gen.Sequence
+  seq.add (toit-gen.ExpressionStatement ref)
+  fun.body = seq
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+  code := (program.gen --in-memory)["test-relative-prefix.toit"]
+
+  expect (code.contains "import .openapi as oa")
+      --message="Expected `import .openapi as oa` for a prefixed relative import"
+  expect (code.contains "oa.Thing")
+      --message="Expected `oa.Thing` reference through the prefix"
+
+test-import-show-all-bare:
+  // `show *` removes the prefix, so references must be unqualified.
+  lib := toit-gen.Library "test-show-all.toit"
+  pkg := toit-gen.Package --prefix="my-lib" --id="github.com/example/my-lib"
+  imp := lib.add-import pkg --show-all
+
+  target := toit-gen.VarDefinition.local "Thing" --initial=(toit-gen.Literal null)
+  target.name = "Thing"
+  ref := imp.refer target
+
+  fun := toit-gen.Function "use" --parameters=[] --return-type=null
+  seq := toit-gen.Sequence
+  seq.add (toit-gen.ExpressionStatement ref)
+  fun.body = seq
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+  code := (program.gen --in-memory)["test-show-all.toit"]
+
+  expect (code.contains "import my-lib show *")
+      --message="Expected `import my-lib show *`"
+  expect-not (code.contains "my-lib.Thing")
+      --message="`show *` removes the prefix, so references must be unqualified"
+  expect (code.contains "  Thing")
+      --message="Expected unqualified `Thing` reference under `show *`"

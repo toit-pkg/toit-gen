@@ -227,7 +227,7 @@ class Library extends BaseNode_:
       --show-all/bool=false -> Import:
     segments := [package.prefix]
     if module: segments.add-all (module.split ".")
-    prefix := preferred-prefix != null ? preferred-prefix : segments.last
+    prefix := preferred-prefix or segments.last
     imp := Import segments
         --preferred-prefix=prefix
         --package=package
@@ -241,15 +241,18 @@ class Library extends BaseNode_:
 
   $path is a dot-separated chain of segments without the leading dot, so
     `add-relative-import "openapi"` renders as `import .openapi`.
+
+  Unlike package imports, a relative import binds no implicit prefix, so its
+    references are brought into scope directly (`import .openapi` exposes the
+    bare names). Pass $preferred-prefix to render an explicit `as` clause
+    (`import .openapi as oa`) and qualify the references through it.
   */
   add-relative-import path/string
       --preferred-prefix/string?=null
       --show-all/bool=false -> Import:
-    segments := path.split "."
-    prefix := preferred-prefix != null ? preferred-prefix : segments.last
-    imp := Import segments
-        --preferred-prefix=prefix
-        --is-relative=true
+    imp := Import (path.split ".")
+        --preferred-prefix=preferred-prefix
+        --is-relative
         --show-all=show-all
     imports.add imp
     return imp
@@ -357,6 +360,20 @@ class Import extends BaseNode_:
     return segments.size == 1 and segments[0] == "core"
 
   /**
+  Whether references through this import are qualified with the $prefix
+    (rendered as `prefix.name`) instead of brought into scope directly.
+
+  A prefix is only usable when the rendered import actually binds one. A
+    `show *` clause brings the names in unqualified and removes the prefix,
+    so those imports are never qualified. A relative import binds a prefix
+    only through an explicit `as`, which the renderer emits whenever $prefix
+    is set.
+  */
+  uses-prefix -> bool:
+    if show-all: return false
+    return prefix != null
+
+  /**
   Creates an $ImportedRef to $target through this import.
   */
   refer target/RefTarget -> ImportedRef:
@@ -462,18 +479,12 @@ class Class extends BaseNode_ implements RefTarget:
     return fn
 
   /**
-  Creates an unnamed `constructor`, appends it to this class's $members, and returns it.
-  */
-  add-constructor --parameters/List=[] body/Statement?=null -> Function:
-    constr := Function.constr --parameters=parameters body
-    members.add constr
-    return constr
+  Creates a constructor, appends it to this class's $members, and returns it.
 
-  /**
-  Creates a named constructor (`constructor.$name`), appends it to this
-    class's $members, and returns it.
+  Without a $name the constructor is unnamed (`constructor`); with a $name it
+    is a named constructor (`constructor.$name`).
   */
-  add-named-constructor name/string --parameters/List=[] body/Statement?=null -> Function:
+  add-constructor --name/string?=null --parameters/List=[] body/Statement?=null -> Function:
     constr := Function.constr --name=name --parameters=parameters body
     members.add constr
     return constr
