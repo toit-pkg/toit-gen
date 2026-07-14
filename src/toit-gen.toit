@@ -915,6 +915,11 @@ interface RefTarget:
 
 /**
 A reference to a $RefTarget.
+
+Refs are immutable and may be shared: the same $Ref instance may appear in
+  multiple positions of the generated tree (for example as a field's type
+  and as a getter's return type). An $ImportedRef must only be shared within
+  the library whose $Import it references.
 */
 class Ref extends Expression:
   target/RefTarget
