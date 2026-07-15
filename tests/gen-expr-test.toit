@@ -14,9 +14,78 @@ main:
   test-control-flow
   test-block-vs-named
   test-nested-calls
+  test-block-in-parenthesized-arg
+  test-multi-statement-block-in-parens
   test-named-true-shorthand
   test-named-false-shorthand
   test-ternary
+test-block-in-parenthesized-arg:
+  // `encode (body.map: | it | it.to-json)` must render on one line: a
+  // streamed block body would leave the closing parenthesis stranded on
+  // a misindented line.
+  body-var := toit-gen.VarDefinition.local "body" --initial=(toit-gen.Literal [])
+  body-var.name = "body"
+  it-param := toit-gen.VarDefinition.parameter "it"
+  it-param.name = "it"
+  to-json-call := toit-gen.Call (toit-gen.Ref it-param) "to-json"
+  block := toit-gen.Block (toit-gen.ExpressionStatement to-json-call) --parameters=[it-param]
+  map-call := toit-gen.Call (toit-gen.Ref body-var) "map" --arguments=[block]
+
+  encode-def := toit-gen.Function "encode" --parameters=[] --return-type=null
+  encode-def.name = "encode"
+  encode-call := toit-gen.Call (toit-gen.Ref encode-def) --arguments=[map-call]
+
+  seq := toit-gen.Sequence
+  seq.add (toit-gen.ExpressionStatement encode-call)
+  lib := toit-gen.Library "test-block-parens.toit"
+  fun := toit-gen.Function "wrap" --parameters=[] --return-type=null
+  fun.body = seq
+  lib.functions.add fun
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-block-parens.toit"]
+
+  expect (code.contains "encode (body.map: | it | it.to-json)")
+      --message="Expected the block to render inline inside the parenthesized argument"
+
+test-multi-statement-block-in-parens:
+  // A multi-statement block body streams, indented deeper than argument
+  // continuation lines so the parser keeps it inside the parentheses.
+  body-var := toit-gen.VarDefinition.local "body" --initial=(toit-gen.Literal [])
+  body-var.name = "body"
+  it-param := toit-gen.VarDefinition.parameter "it"
+  it-param.name = "it"
+  multi := toit-gen.Sequence
+  multi.add (toit-gen.ExpressionStatement (toit-gen.Call (toit-gen.Ref it-param) "to-json"))
+  multi.add (toit-gen.ExpressionStatement (toit-gen.Ref it-param))
+  block := toit-gen.Block multi --parameters=[it-param]
+  map-call := toit-gen.Call (toit-gen.Ref body-var) "map" --arguments=[block]
+
+  encode-def := toit-gen.Function "encode" --parameters=[] --return-type=null
+  encode-def.name = "encode"
+  encode-call := toit-gen.Call (toit-gen.Ref encode-def) --arguments=[map-call]
+
+  seq := toit-gen.Sequence
+  seq.add (toit-gen.ExpressionStatement encode-call)
+  lib := toit-gen.Library "test-block-parens-throws.toit"
+  fun := toit-gen.Function "wrap" --parameters=[] --return-type=null
+  fun.body = seq
+  lib.functions.add fun
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-block-parens-throws.toit"]
+
+  expected := """
+    wrap:
+      encode (body.map: | it |
+            it.to-json
+            it)"""
+  expect-equals expected code.trim
+
 test-block-vs-named:
   list-ref-var := toit-gen.VarDefinition.local "list" --initial=(toit-gen.Literal [])
   list-ref-var.name = "list"

@@ -167,6 +167,10 @@ class GeneratingVisitor implements NodeVisitor:
   omit-trailing-newline_/bool := false
   current-class_/Class? := null
   in-static_/bool := false
+  // > 0 while rendering inside parentheses. Blocks must then render
+  //   inline: streaming a block body onto indented lines would leave the
+  //   closing parenthesis after the block, which the parser rejects.
+  parenthesized-depth_/int := 0
 
   constructor .context:
 
@@ -489,6 +493,10 @@ class GeneratingVisitor implements NodeVisitor:
     if node.method-name and (node.target is Call and not (node.target as Call).method-name and (node.target as Call).arguments.is-empty):
       target-parens = true
 
+    // Note: a parenthesized *target* keeps streaming its blocks — the
+    //   closing parenthesis hugs the last body line (`return []).add x`),
+    //   which the parser accepts. Only parenthesized *arguments* need
+    //   inline blocks; see $write-parenthesized_.
     if target-parens: write "("
     expr_ node.target
     if target-parens: write ")"
@@ -509,19 +517,23 @@ class GeneratingVisitor implements NodeVisitor:
         // In multi-block mode, put all args on continuation lines.
         normal-args.do: | arg |
           write "\n$(context.indent-string)    "
-          write-arg_ arg
+          write-call-arg_ arg
       else:
         has-named := normal-args.any: it is Named
         if normal-args.size > 2 and has-named:
           write " "
-          write-arg_ normal-args[0]
+          write-call-arg_ normal-args[0]
           for i := 1; i < normal-args.size; i++:
             write "\n$(context.indent-string)    "
-            write-arg_ normal-args[i]
+            write-call-arg_ normal-args[i]
         else:
           normal-args.do: | arg |
             write " "
-            write-arg_ arg
+            write-call-arg_ arg
+
+    inline-blocks := parenthesized-depth_ > 0
+    if inline-blocks and multi-block:
+      throw "Cannot render a call with multiple blocks inside a parenthesized argument"
 
     for i := 0; i < blocks.size; i++:
       blk := blocks[i]
@@ -542,7 +554,20 @@ class GeneratingVisitor implements NodeVisitor:
         p-names := b.parameters.map: it.name
         write " | $(p-names.join " ") |"
 
-      if multi-block:
+      if inline-blocks:
+        single := inline-block-expression_ b.body
+        if single:
+          // A single-expression body stays on the same line.
+          write " "
+          expr_ single
+        else:
+          // A multi-statement body streams, but must be indented deeper
+          // than the argument continuation lines (statement indent + 4)
+          // or the parser detaches it from the block header.
+          context.indent-level += 2
+          stream-block-body_ b.body true
+          context.indent-level -= 2
+      else if multi-block:
         // Body at +4 from block header. Always omit trailing newline
         // to prevent blank lines between blocks.
         context.indent-level += 2
@@ -737,6 +762,41 @@ class GeneratingVisitor implements NodeVisitor:
       write ")"
     else:
       expr_ arg
+
+  /**
+  Writes a call argument, forcing blocks inside parentheses to render
+    inline.
+
+  Unlike an if-condition or a parenthesized call target — where a
+    streamed block body keeps a parseable indentation — a call argument
+    can sit on a continuation line, where the streamed body would be
+    indented left of its own header and the parser rejects it.
+  */
+  write-call-arg_ arg/Expression -> none:
+    if needs-parens_ arg:
+      write-parenthesized_ arg
+    else:
+      expr_ arg
+
+  /// Writes $node wrapped in parentheses; see $parenthesized-depth_.
+  write-parenthesized_ node/Expression -> none:
+    write "("
+    parenthesized-depth_++
+    expr_ node
+    parenthesized-depth_--
+    write ")"
+
+  /**
+  The single expression of a block body that can be rendered inline, or
+    null for a multi-statement body.
+  */
+  inline-block-expression_ body/Statement -> Expression?:
+    if body is ExpressionStatement: return (body as ExpressionStatement).expression
+    if body is Sequence:
+      seq := body as Sequence
+      if seq.statements.size == 1:
+        return inline-block-expression_ seq.statements[0]
+    return null
 
   stream-block-body_ body/Statement omit/bool -> none:
     write-line
