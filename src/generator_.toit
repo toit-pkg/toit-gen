@@ -153,11 +153,11 @@ class UnnamedParamNamingVisitor extends TraversingVisitor:
 
   visit-VarDefinition node/VarDefinition -> any:
     if not node.name and current-namer is LocalNamer and not node.is-block and not node.initial and not node.is-named:
-      outer := (current-namer as LocalNamer).outer-namer
-      if outer is MemberNamer:
-        node.name = (outer as MemberNamer).use-member node.preferred-name
-      else if outer is GlobalNamer:
-        node.name = (outer as GlobalNamer).use-global node.preferred-name
+      // Name through the function's own scope: $Namer.is-free chains
+      //   through the member and global namers (whose names are all
+      //   assigned by this phase), so the parameter cannot shadow them,
+      //   while sibling functions remain free to reuse the same name.
+      node.name = (current-namer as LocalNamer).use-local node.preferred-name
     super node
     return null
 

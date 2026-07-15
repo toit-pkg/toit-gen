@@ -15,6 +15,7 @@ main:
   test-named-constructor
   test-abstract-method
   test-super-call
+  test-positional-param-shared-across-methods
   test-extends-imported
   test-throw
   test-nullable-field
@@ -223,6 +224,33 @@ test-super-call:
 
   expect (code.contains "super.from-json data")
       --message="Expected super.from-json call"
+
+test-positional-param-shared-across-methods:
+  // Sibling methods may both use the same positional parameter name; the
+  // uniquifier must not rename the second one to `data-1`.
+  cls := toit-gen.Class "Codec" --kind=toit-gen.Class.CLASS
+  2.repeat: | i/int |
+    param := toit-gen.VarDefinition.parameter "data"
+    seq := toit-gen.Sequence
+    seq.add (toit-gen.Statement (toit-gen.Ref param))
+    fun := toit-gen.Function (i == 0 ? "encode" : "decode") --parameters=[param] --return-type=null
+    fun.body = seq
+    cls.members.add fun
+
+  lib := toit-gen.Library "test-positional-shared.toit"
+  lib.classes.add cls
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-positional-shared.toit"]
+
+  expect (code.contains "encode data:")
+      --message="Expected first method to use the plain parameter name"
+  expect (code.contains "decode data:")
+      --message="Expected sibling method to reuse the same parameter name"
+  expect-not (code.contains "data-1")
+      --message="Positional parameters of sibling methods must not collide"
 
 test-extends-imported:
   // A superclass imported through a prefixed import must render with the
