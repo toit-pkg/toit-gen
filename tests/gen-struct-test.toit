@@ -15,6 +15,7 @@ main:
   test-named-constructor
   test-abstract-method
   test-super-call
+  test-extends-imported
   test-throw
   test-nullable-field
   test-typed-positional-parameter
@@ -222,6 +223,28 @@ test-super-call:
 
   expect (code.contains "super.from-json data")
       --message="Expected super.from-json call"
+
+test-extends-imported:
+  // A superclass imported through a prefixed import must render with the
+  // prefix: `class Api extends my-library.ApiBase`.
+  imp := toit-gen.Import ["my-library"] --preferred-prefix="my-library"
+  base := toit-gen.Class.imported "ApiBase"
+
+  cls := toit-gen.Class "Api" --kind=toit-gen.Class.CLASS
+      --super-class=(toit-gen.ImportedRef imp base)
+
+  lib := toit-gen.Library "test-extends-imported.toit"
+  lib.imports.add imp
+  lib.classes.add cls
+
+  program := toit-gen.Program
+  program.libraries.add lib
+
+  generated := program.gen --in-memory
+  code := generated["test-extends-imported.toit"]
+
+  expect (code.contains "class Api extends my-library.ApiBase")
+      --message="Expected the superclass to render through the import prefix"
 
 test-throw:
   lib := toit-gen.Library "test.toit"
