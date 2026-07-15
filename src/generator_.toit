@@ -265,15 +265,15 @@ class GeneratingVisitor implements NodeVisitor:
     else: line += "class"
     line += " $node.name"
     if node.super-class:
-      line += " extends $(node.super-class.target.name)"
+      line += " extends $(ref-name_ node.super-class)"
     if not node.interfaces.is-empty:
       line += " implements"
       node.interfaces.do: | ref/Ref |
-        line += " $ref.target.name"
+        line += " $(ref-name_ ref)"
     if not node.mixins.is-empty:
       line += " with"
       node.mixins.do: | ref/Ref |
-        line += " $ref.target.name"
+        line += " $(ref-name_ ref)"
     line += ":"
     write-line line
     context.indent
@@ -604,6 +604,17 @@ class GeneratingVisitor implements NodeVisitor:
   visit-LateInitialized node/LateInitialized -> any:
     write "?"
     return null
+
+  /**
+  The source name of $ref, including the import prefix for an
+    $ImportedRef through a prefixed import.
+  */
+  ref-name_ ref/Ref -> string:
+    if ref is ImportedRef:
+      imported := ref as ImportedRef
+      if imported.imp.uses-prefix:
+        return "$imported.imp.prefix.$imported.target.name"
+    return ref.target.name
 
   visit-Ref node/Ref -> any:
     write node.target.name
