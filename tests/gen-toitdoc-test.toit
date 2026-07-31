@@ -16,6 +16,7 @@ main:
   test-toitdoc-ref-global-from-class
   test-toitdoc-param-shadows-global
   test-toitdoc-param-shadows-member
+  test-toitdoc-literal-escaping
 
 test-toitdocs:
   lib := toit-gen.Library "test-toitdocs.toit"
@@ -398,4 +399,18 @@ test-toitdoc-param-shadows-member:
 
       /** Updates the \$status to \$status-1. */
       update status-1:"""
+  expect-equals expected code.trim
+
+test-toitdoc-literal-escaping:
+  lib := toit-gen.Library "test-toitdoc-literal-escaping.toit"
+  fun := toit-gen.Function "safe" --parameters=[] --return-type=null
+  fun.toitdoc = ["Literal \$name, [link], `code`, \\path, and */ remain text."]
+  lib.functions.add fun
+
+  program := toit-gen.Program
+  program.libraries.add lib
+  code := (program.gen --in-memory)["test-toitdoc-literal-escaping.toit"]
+
+  slash := "\\"
+  expected := "/// Literal $(slash)\$name, $(slash)[link], $(slash)`code$(slash)`, $(slash)$(slash)path, and */ remain text.\nsafe:"
   expect-equals expected code.trim

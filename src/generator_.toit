@@ -16,6 +16,43 @@ import .toit-gen
 import .toit-gen show Lambda
 import .visitor show *
 
+/// Escapes arbitrary text for use as the contents of a Toit string literal.
+escape-string-content_ value/string -> string:
+  result := io.Buffer
+  value.do --runes: | rune/int |
+    if rune == '\\':
+      result.write "\\\\"
+    else if rune == '"':
+      result.write "\\\""
+    else if rune == '$':
+      result.write "\\\$"
+    else if rune == '\n':
+      result.write "\\n"
+    else if rune == '\r':
+      result.write "\\r"
+    else if rune == '\t':
+      result.write "\\t"
+    else if rune == '\b':
+      result.write "\\b"
+    else if rune == '\f':
+      result.write "\\f"
+    else if rune < 0x20 or rune == 0x7f:
+      result.write "\\x$(%02X rune)"
+    else if rune == 0x2028 or rune == 0x2029:
+      result.write "\\u{$(%X rune)}"
+    else:
+      result.write (string.from-rune rune)
+  return result.to-string
+
+/// Escapes literal Toitdoc text while leaving generated references active.
+escape-toitdoc-text_ value/string -> string:
+  result := io.Buffer
+  value.do --runes: | rune/int |
+    if rune == '\\' or rune == '`' or rune == '\'' or rune == '$' or rune == '"' or rune == '[':
+      result.write "\\"
+    result.write (string.from-rune rune)
+  return result.to-string
+
 class WriteContext_:
   indent-level/int := 0
   writer/io.Writer
@@ -618,7 +655,10 @@ class GeneratingVisitor implements NodeVisitor:
 
   visit-Literal node/Literal -> any:
     v := node.value
-    if v is string: write "\"$v\""
+    if v is string:
+      write "\""
+      write (escape-string-content_ v)
+      write "\""
     else if v is int or v is float or v is bool: write "$v"
     else if v == null: write "null"
     else if v is List and v.is-empty: write "[]"
@@ -713,7 +753,7 @@ class GeneratingVisitor implements NodeVisitor:
     write "\""
     for i := 0; i < node.parts.size; i++:
       if i % 2 == 0:
-        write node.parts[i]
+        write (escape-string-content_ node.parts[i])
       else:
         part := node.parts[i]
         if part is Ref:
@@ -812,7 +852,7 @@ class GeneratingVisitor implements NodeVisitor:
     parts := []
     toitdoc.do: | segment |
       if segment is string:
-        parts.add segment
+        parts.add (escape-toitdoc-text_ segment)
       else if segment is ToitdocNameRef:
         ref := segment as ToitdocNameRef
         if ref.holder and (not current-class_ or not (identical ref.holder current-class_)):
@@ -839,7 +879,11 @@ class GeneratingVisitor implements NodeVisitor:
         parts.add "\$super"
     text := parts.join ""
     lines := text.split "\n"
-    if lines.size == 1:
+    // A block-comment terminator in user-controlled text would end the
+    // generated Toitdoc early. Line Toitdocs have no such delimiter.
+    if text.contains "*/":
+      lines.do: | line/string | write-line "/// $line"
+    else if lines.size == 1:
       write-line "/** $text */"
     else:
       write-line "/**"
