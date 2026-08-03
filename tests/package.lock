@@ -1,5 +1,6 @@
 sdk: ^2.0.0-alpha.188.1
 prefixes:
+  host: pkg-host
   toit-gen: ..
 packages:
   ..:
@@ -17,5 +18,5 @@ packages:
   pkg-host:
     url: github.com/toitlang/pkg-host
     name: host
-    version: 1.17.0
-    hash: 05a26b5fa1cc73dc64a5e9cc16c40ae5aa24e0fb
+    version: 1.19.0
+    hash: d7a30b86c73cf8d9cd5dd0211031c76b68706738

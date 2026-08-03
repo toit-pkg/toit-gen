@@ -13,6 +13,8 @@ main:
   test-string-interpolation-complex-expr
   test-string-interpolation-multiple
   test-string-interpolation-no-interpolation
+  test-literal-string-escaping
+  test-string-interpolation-text-escaping
   test-list-literal
   test-map-literal
   test-set-literal
@@ -153,6 +155,22 @@ test-string-interpolation-no-interpolation:
   expected := """
     test-fn:
       "just a string\""""
+  expect-equals expected code.trim
+
+test-literal-string-escaping:
+  value := "quote=\" slash=\\ dollar=\$ newline=\n return=\r tab=\t backspace=\b formfeed=\f del=$(string.from-rune 0x7f) snowman=☃"
+  code := gen-expr (toit-gen.Literal value)
+  slash := "\\"
+  expected := "test-fn:\n  \"quote=$(slash)\" slash=$(slash)$(slash) dollar=$(slash)\$ newline=$(slash)n return=$(slash)r tab=$(slash)t backspace=$(slash)b formfeed=$(slash)f del=$(slash)x7F snowman=☃\""
+  expect-equals expected code.trim
+
+test-string-interpolation-text-escaping:
+  name-var := toit-gen.VarDefinition.local "name" --initial=(toit-gen.Literal null)
+  name-var.name = "name"
+  interp := toit-gen.StringInterpolation ["literal \$fake, quote \" and slash \\", toit-gen.Ref name-var, "\nend"]
+  code := gen-expr interp
+  slash := "\\"
+  expected := "test-fn:\n  \"literal $(slash)\$fake, quote $(slash)\" and slash $(slash)$(slash)\$name$(slash)nend\""
   expect-equals expected code.trim
 
 test-list-literal:
