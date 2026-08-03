@@ -255,6 +255,11 @@ test-expressions:
   idx := toit-gen.Index t-ref (toit-gen.Literal 0)
   seq.add (toit-gen.ExpressionStatement idx)
 
+  index-assign := toit-gen.IndexAssign t-ref (toit-gen.Literal 1) (toit-gen.Literal "updated")
+  seq.add (toit-gen.ExpressionStatement index-assign)
+
+  seq.add (toit-gen.ExpressionStatement (toit-gen.MapLiteral [] []))
+
   as-expr := toit-gen.As t-ref (toit-gen.Class.core "string")
   seq.add (toit-gen.ExpressionStatement as-expr)
 
@@ -291,6 +296,8 @@ test-expressions:
   expected := """
     wrap:
       t[0]
+      t[1] = "updated"
+      {:}
       t as string
       t is string
       ::

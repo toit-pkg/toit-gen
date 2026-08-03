@@ -156,7 +156,7 @@ class LocalNamingVisitor extends TraversingVisitor:
     return null
 
   visit-VarDefinition node/VarDefinition -> any:
-    if not node.name and current-namer is LocalNamer:
+    if not node.name and not node.initializes-field and current-namer is LocalNamer:
       node.name = (current-namer as LocalNamer).use-local node.preferred-name
     super node
     return null
@@ -189,7 +189,7 @@ class UnnamedParamNamingVisitor extends TraversingVisitor:
     return null
 
   visit-VarDefinition node/VarDefinition -> any:
-    if not node.name and current-namer is LocalNamer and not node.is-block and not node.initial and not node.is-named:
+    if not node.name and not node.initializes-field and current-namer is LocalNamer and not node.is-block and not node.initial and not node.is-named:
       // Name through the function's own scope: $Namer.is-free chains
       //   through the member and global namers (whose names are all
       //   assigned by this phase), so the parameter cannot shadow them,
@@ -413,14 +413,20 @@ class GeneratingVisitor implements NodeVisitor:
   */
   write-param_ param/VarDefinition -> none:
     if param.is-named: write "--"
-    write param.name
+    if param.initializes-field:
+      write "."
+      write param.initializes-field.name
+    else:
+      write param.name
     if param.type:
       write "/"
       param.type.accept this
       if param.is-nullable: write "?"
     if param.initial:
       write "="
+      if needs-parens_ param.initial: write "("
       expr_ param.initial
+      if needs-parens_ param.initial: write ")"
 
   visit-VarDefinition node/VarDefinition -> any:
     return null
@@ -625,6 +631,16 @@ class GeneratingVisitor implements NodeVisitor:
     write "]"
     return null
 
+  visit-IndexAssign node/IndexAssign -> any:
+    if needs-parens_ node.target: write "("
+    expr_ node.target
+    if needs-parens_ node.target: write ")"
+    write "["
+    expr_ node.index
+    write "] = "
+    expr_ node.value
+    return null
+
   visit-IndexSlice node/IndexSlice -> any:
     if needs-parens_ node.target: write "("
     expr_ node.target
@@ -774,6 +790,9 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-MapLiteral node/MapLiteral -> any:
+    if node.keys.is-empty:
+      write "{:}"
+      return null
     write "{"
     for i := 0; i < node.keys.size; i++:
       if i > 0: write ", "

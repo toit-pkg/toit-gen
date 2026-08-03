@@ -118,14 +118,14 @@ class Program extends BaseNode_:
       global-param-cache := {:}
       library.functions.do: | fun/Function |
         fun.parameters.do: | param/VarDefinition |
-          if not param.name and param.is-named:
+          if not param.name and param.is-named and not param.initializes-field:
             param.name = global-namer.use-shared-global param.preferred-name --cache=global-param-cache
       library.classes.do: | cls/Class |
         member-namer/MemberNamer := namers[cls]
         member-param-cache := {:}
         cls.members.do: | fun/Function |
           fun.parameters.do: | param/VarDefinition |
-            if not param.name and param.is-named:
+            if not param.name and param.is-named and not param.initializes-field:
               param.name = member-namer.use-shared-member param.preferred-name --cache=member-param-cache
         cls.static-functions.do: | fun/Function |
           fun.parameters.do: | param/VarDefinition |
@@ -554,6 +554,7 @@ class VarDefinition extends BaseNode_ implements RefTarget:
   is-named/bool
   is-final/bool
   is-private/bool
+  initializes-field/VarDefinition? := null
   toitdoc/List? := null
 
   constructor.parameter .preferred-name
@@ -564,6 +565,18 @@ class VarDefinition extends BaseNode_ implements RefTarget:
       --.is-nullable=false
       --.is-final=false
       --.is-private=false:
+
+  /** Creates a constructor parameter that initializes $field directly. */
+  constructor.field-parameter field/VarDefinition
+      --.initial=null
+      --.is-named=false:
+    initializes-field = field
+    preferred-name = field.preferred-name
+    type = field.type
+    is-nullable = field.is-nullable
+    is-block = false
+    is-final = false
+    is-private = false
 
   constructor.ignored:
     preferred-name = "_"
@@ -852,6 +865,19 @@ class Index extends Expression:
 
   accept visitor/NodeVisitor -> any:
     return visitor.visit-Index this
+
+/**
+An indexed assignment (e.g. `foo[bar] = value`).
+*/
+class IndexAssign extends Expression:
+  target/Expression
+  index/Expression
+  value/Expression
+
+  constructor .target .index .value:
+
+  accept visitor/NodeVisitor -> any:
+    return visitor.visit-IndexAssign this
 
 /**
 An assignment expression (e.g. `foo = bar`).

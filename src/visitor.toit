@@ -37,6 +37,7 @@ interface NodeVisitor:
   // Expressions.
   visit-Call node/Call -> any
   visit-Index node/Index -> any
+  visit-IndexAssign node/IndexAssign -> any
   visit-IndexSlice node/IndexSlice -> any
   visit-Assign node/Assign -> any
   visit-Block node/Block -> any
@@ -164,6 +165,12 @@ class TraversingVisitor implements NodeVisitor:
     node.index.accept this
     return null
 
+  visit-IndexAssign node/IndexAssign -> any:
+    node.target.accept this
+    node.index.accept this
+    node.value.accept this
+    return null
+
   visit-IndexSlice node/IndexSlice -> any:
     node.target.accept this
     if node.from: node.from.accept this
@@ -244,4 +251,3 @@ class TraversingVisitor implements NodeVisitor:
 
   visit-Super node/Super -> any:
     return null
-

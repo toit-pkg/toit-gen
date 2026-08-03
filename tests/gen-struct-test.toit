@@ -24,6 +24,7 @@ main:
   test-nullable-named-parameter
   test-parameter-with-default
   test-named-nullable-with-null-default
+  test-field-initializing-parameters
   test-library-helpers
   test-class-helpers
   test-sequence-invoke
@@ -537,6 +538,48 @@ test-library-helpers:
     class MyClass:
 
     free:"""
+  expect-equals expected code.trim
+
+test-field-initializing-parameters:
+  cls := toit-gen.Class "Box" --kind=toit-gen.Class.CLASS
+  value := toit-gen.VarDefinition.field "value"
+      --type=(toit-gen.Ref (toit-gen.Class.core "string"))
+      --initial=null
+  count := toit-gen.VarDefinition.field "count"
+      --type=(toit-gen.Ref (toit-gen.Class.core "int"))
+      --is-nullable=true
+      --initial=null
+  has-count := toit-gen.VarDefinition.field "has-count"
+      --type=(toit-gen.Ref (toit-gen.Class.core "bool"))
+      --initial=null
+  cls.fields.add value
+  cls.fields.add count
+  cls.fields.add has-count
+
+  value-param := toit-gen.VarDefinition.field-parameter value
+  count-param := toit-gen.VarDefinition.field-parameter count
+      --is-named=true
+      --initial=(toit-gen.Literal null)
+  has-count-param := toit-gen.VarDefinition.field-parameter has-count
+      --is-named=true
+      --initial=(toit-gen.Binary (toit-gen.Ref count) "!=" (toit-gen.Literal null))
+  cls.members.add (toit-gen.Function.constr
+      --parameters=[value-param, count-param, has-count-param]
+      toit-gen.Sequence)
+
+  lib := toit-gen.Library "field-parameters.toit"
+  lib.classes.add cls
+  program := toit-gen.Program
+  program.libraries.add lib
+  code := (program.gen --in-memory)["field-parameters.toit"]
+
+  expected := """
+    class Box:
+      value/string
+      count/int?
+      has-count/bool
+
+      constructor .value/string --.count/int?=null --.has-count/bool=(count != null):"""
   expect-equals expected code.trim
 
 test-class-helpers:
