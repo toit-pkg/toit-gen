@@ -10,8 +10,11 @@ install-pkgs: rebuild-cmake
 test: install-pkgs rebuild-cmake
 	cmake --build build --target check
 
+update-gold: install-pkgs rebuild-cmake
+	cmake --build build --target update-gold
+
 rebuild-cmake:
 	mkdir -p build
 	cmake -B build -DCMAKE_BUILD_TYPE=Debug
 
-.PHONY: all test rebuild-cmake install-pkgs
+.PHONY: all test update-gold rebuild-cmake install-pkgs

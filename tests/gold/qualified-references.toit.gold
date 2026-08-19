@@ -1,0 +1,11 @@
+import core
+import state
+
+class Map:
+
+qualified value/core.Map -> core.Map:
+  state.current = value
+  value as core.Map
+  value is core.Map
+  "current=$(state.current)-entry"
+  return value

@@ -1,0 +1,9 @@
+classify value/int --limit/int=10 -> int:
+  doubled/int := (value > 0) ? (value * 2) : (-value)
+  label := "value=$(value)-limit"
+  metadata := {"label": label}
+  values := [value, doubled]
+  if (doubled > limit):
+    return doubled
+  else:
+    throw "too-small-$(value).detail"

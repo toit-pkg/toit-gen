@@ -35,3 +35,15 @@ main:
   result := program.gen --in-memory
   print result["generated/hello.toit"]
 ```
+
+## Gold tests
+
+The gold tests compare representative generated libraries with the checked-in
+files under `tests/gold/`. To intentionally update those files, run:
+
+```sh
+make update-gold
+```
+
+Review the resulting diff before committing it; the gold files are intended to
+make renderer changes visible as generated Toit source.

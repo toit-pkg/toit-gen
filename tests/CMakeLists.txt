@@ -18,6 +18,14 @@ add_custom_target(
   USES_TERMINAL
 )
 
+add_custom_target(
+  "update-gold"
+  COMMAND "${CMAKE_COMMAND}" -E env "UPDATE_GOLD=1"
+    "${TOIT_EXEC}" "tests/gold-test.toit"
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  USES_TERMINAL
+)
+
 foreach(file ${TESTS})
   set(test_name "/tests/${file}")
   add_test(

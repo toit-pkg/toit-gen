@@ -1,0 +1,17 @@
+/** Representative generated declarations. */
+import core
+
+/** Exposes a name. */
+interface Named:
+  name -> core.string
+
+
+/** A generated person model. */
+class Person implements Named:
+  name/core.string
+  age/core.int?
+
+  constructor .name/core.string --.age/core.int?=null:
+
+  describe -> core.string:
+    return "$(name)-age=$(age)"
