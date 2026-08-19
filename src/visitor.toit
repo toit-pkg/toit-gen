@@ -178,6 +178,7 @@ class TraversingVisitor implements NodeVisitor:
     return null
 
   visit-Assign node/Assign -> any:
+    node.target.accept this
     node.value.accept this
     return null
 
@@ -205,10 +206,12 @@ class TraversingVisitor implements NodeVisitor:
 
   visit-As node/As -> any:
     node.expression.accept this
+    node.type.accept this
     return null
 
   visit-Is node/Is -> any:
     node.expression.accept this
+    node.type.accept this
     return null
 
   visit-Binary node/Binary -> any:

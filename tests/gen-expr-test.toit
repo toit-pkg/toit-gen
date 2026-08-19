@@ -260,10 +260,10 @@ test-expressions:
 
   seq.add (toit-gen.ExpressionStatement (toit-gen.MapLiteral [] []))
 
-  as-expr := toit-gen.As t-ref (toit-gen.Class.core "string")
+  as-expr := toit-gen.As t-ref (toit-gen.Ref (toit-gen.Class.core "string"))
   seq.add (toit-gen.ExpressionStatement as-expr)
 
-  is-expr := toit-gen.Is t-ref (toit-gen.Class.core "string")
+  is-expr := toit-gen.Is t-ref (toit-gen.Ref (toit-gen.Class.core "string"))
   seq.add (toit-gen.ExpressionStatement is-expr)
 
   lambda-body := toit-gen.Sequence
@@ -273,7 +273,7 @@ test-expressions:
 
   late := toit-gen.LateInitialized
   late-var := seq.define "late_var" late
-  seq.assign late-var (toit-gen.Literal 42)
+  seq.assign (toit-gen.Ref late-var) (toit-gen.Literal 42)
 
   fun := toit-gen.Function "wrap" --parameters=[] --return-type=null
   fun.body = seq
@@ -321,13 +321,13 @@ test-nested-expressions:
   a-var := toit-gen.VarDefinition.local "a" --initial=(toit-gen.Literal null)
   a-var.name = "a"
   a-ref := toit-gen.Ref a-var
-  as1 := toit-gen.As a-ref (toit-gen.Class.core "int")
-  as2 := toit-gen.As as1 (toit-gen.Class.core "float")
+  as1 := toit-gen.As a-ref (toit-gen.Ref (toit-gen.Class.core "int"))
+  as2 := toit-gen.As as1 (toit-gen.Ref (toit-gen.Class.core "float"))
   seq.add (toit-gen.ExpressionStatement as2)
 
   // Test generating: (a is int) as bool
-  is1 := toit-gen.Is a-ref (toit-gen.Class.core "int")
-  as3 := toit-gen.As is1 (toit-gen.Class.core "bool")
+  is1 := toit-gen.Is a-ref (toit-gen.Ref (toit-gen.Class.core "int"))
+  as3 := toit-gen.As is1 (toit-gen.Ref (toit-gen.Class.core "bool"))
   seq.add (toit-gen.ExpressionStatement as3)
 
   // Test generating: a[b[c[1]]]

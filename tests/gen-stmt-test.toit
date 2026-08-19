@@ -104,7 +104,7 @@ test-for-basic:
 
   init := toit-gen.LocalDefinition i-var
   condition := toit-gen.Binary i-ref "<" (toit-gen.Literal 10)
-  update := toit-gen.Assign i-var (toit-gen.Binary i-ref "+" (toit-gen.Literal 1))
+  update := toit-gen.Assign i-ref (toit-gen.Binary i-ref "+" (toit-gen.Literal 1))
 
   print-var := toit-gen.VarDefinition.local "print" --initial=(toit-gen.Literal null)
   print-var.name = "print"
@@ -133,7 +133,7 @@ test-for-with-local-definition:
 
   init := toit-gen.LocalDefinition j-var
   condition := toit-gen.Binary j-ref ">" (toit-gen.Literal 0)
-  update := toit-gen.Assign j-var (toit-gen.Binary j-ref "-" (toit-gen.Literal 1))
+  update := toit-gen.Assign j-ref (toit-gen.Binary j-ref "-" (toit-gen.Literal 1))
   body := toit-gen.ExpressionStatement j-ref
 
   for-stmt := toit-gen.For init condition update body

@@ -104,16 +104,16 @@ test-unary-nested-with-binary:
   expect-equals expected code.trim
 
 test-string-interpolation-simple-ref:
-  // "Hello $name"
+  // Parentheses keep the following kebab/member-looking text literal.
   name-var := toit-gen.VarDefinition.local "name" --initial=(toit-gen.Literal null)
   name-var.name = "name"
   name-ref := toit-gen.Ref name-var
 
-  interp := toit-gen.StringInterpolation ["Hello ", name-ref, ""]
+  interp := toit-gen.StringInterpolation ["Hello ", name-ref, "-bar.foo"]
   code := gen-expr interp
   expected := """
     test-fn:
-      "Hello \$name\""""
+      "Hello \$(name)-bar.foo\""""
   expect-equals expected code.trim
 
 test-string-interpolation-complex-expr:
@@ -132,7 +132,7 @@ test-string-interpolation-complex-expr:
   expect-equals expected code.trim
 
 test-string-interpolation-multiple:
-  // "$a and $b equals $(a + b)"
+  // "$(a) and $(b) equals $(a + b)"
   a-var := toit-gen.VarDefinition.local "a" --initial=(toit-gen.Literal null)
   a-var.name = "a"
   b-var := toit-gen.VarDefinition.local "b" --initial=(toit-gen.Literal null)
@@ -145,7 +145,7 @@ test-string-interpolation-multiple:
   code := gen-expr interp
   expected := """
     test-fn:
-      "\$a and \$b equals \$(a + b)\""""
+      "\$(a) and \$(b) equals \$(a + b)\""""
   expect-equals expected code.trim
 
 test-string-interpolation-no-interpolation:
@@ -170,7 +170,7 @@ test-string-interpolation-text-escaping:
   interp := toit-gen.StringInterpolation ["literal \$fake, quote \" and slash \\", toit-gen.Ref name-var, "\nend"]
   code := gen-expr interp
   slash := "\\"
-  expected := "test-fn:\n  \"literal $(slash)\$fake, quote $(slash)\" and slash $(slash)$(slash)\$name$(slash)nend\""
+  expected := "test-fn:\n  \"literal $(slash)\$fake, quote $(slash)\" and slash $(slash)$(slash)\$(name)$(slash)nend\""
   expect-equals expected code.trim
 
 test-list-literal:

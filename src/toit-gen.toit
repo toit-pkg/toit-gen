@@ -258,6 +258,18 @@ class Library extends BaseNode_:
     return imp
 
   /**
+  Creates an always-prefixed import of the SDK's `core` module.
+
+  References created through the returned $Import remain qualified, so a
+    generated declaration named `Map`, `List`, or another core type cannot
+    change what those references resolve to.
+  */
+  add-core-import -> Import:
+    imp := Import ["core"] --preferred-prefix="core"
+    imports.add imp
+    return imp
+
+  /**
   Creates a $Class with $preferred-name, adds it to this library, and returns it.
   */
   add-class preferred-name/string
@@ -699,7 +711,7 @@ class Sequence extends Statement:
     add return-statement
 
   /** Adds an assignment statement. */
-  assign target/RefTarget value/Expression -> none:
+  assign target/Ref value/Expression -> none:
     assign := Assign target value
     add (Statement assign)
 
@@ -883,7 +895,7 @@ class IndexAssign extends Expression:
 An assignment expression (e.g. `foo = bar`).
 */
 class Assign extends Expression:
-  target/RefTarget
+  target/Ref
   value/Expression
 
   constructor .target .value:
@@ -973,7 +985,7 @@ An `as` typecast expression.
 */
 class As extends Expression:
   expression/Expression
-  type/RefTarget
+  type/Ref
 
   constructor .expression .type:
 
@@ -985,7 +997,7 @@ An `is` type check expression.
 */
 class Is extends Expression:
   expression/Expression
-  type/RefTarget
+  type/Ref
 
   constructor .expression .type:
 

@@ -29,6 +29,7 @@ main:
   test-class-helpers
   test-sequence-invoke
   test-import-refer
+  test-qualified-reference-rendering
   test-relative-import-bare
   test-relative-import-with-prefix
   test-import-show-all-bare
@@ -520,6 +521,10 @@ test-library-helpers:
   imp3 := lib.add-import my-lib-pkg --preferred-prefix="renamed"
   expect-equals "renamed" imp3.preferred-prefix
 
+  core-import := lib.add-core-import
+  expect-equals ["core"] core-import.segments
+  expect-equals "core" core-import.preferred-prefix
+
   cls := lib.add-class "MyClass"
   expect-equals 1 lib.classes.size
   expect-identical cls lib.classes[0]
@@ -603,12 +608,12 @@ test-class-helpers:
   expect-identical m cls.members[0]
 
   ctor-body := toit-gen.Sequence
-  ctor-body.assign field (toit-gen.Literal 1)
+  ctor-body.assign (toit-gen.Ref field) (toit-gen.Literal 1)
   ctor := cls.add-constructor ctor-body
   expect-identical ctor cls.members[1]
 
   named-ctor-body := toit-gen.Sequence
-  named-ctor-body.assign field (toit-gen.Literal 2)
+  named-ctor-body.assign (toit-gen.Ref field) (toit-gen.Literal 2)
   named-ctor := cls.add-constructor --name="two" named-ctor-body
   expect-identical named-ctor cls.members[2]
 
@@ -683,6 +688,39 @@ test-import-refer:
 
   expect (code.contains "lib.x")
       --message="Expected `lib.x` rendering for ImportedRef from Import.refer"
+
+test-qualified-reference-rendering:
+  imp := toit-gen.Import ["my-lib"] --preferred-prefix="lib"
+  external := toit-gen.VarDefinition.local "external" --initial=(toit-gen.Literal null)
+  external.name = "external"
+  external-ref := imp.refer external
+  imported-type := imp.refer (toit-gen.Class.imported "Thing")
+
+  local := toit-gen.VarDefinition.local "local" --initial=(toit-gen.Literal null)
+  local.name = "local"
+  local-ref := toit-gen.Ref local
+  body := toit-gen.Sequence
+  body.add (toit-gen.Statement (toit-gen.Assign external-ref (toit-gen.Literal 1)))
+  body.add (toit-gen.Statement (toit-gen.As local-ref imported-type))
+  body.add (toit-gen.Statement (toit-gen.Is local-ref imported-type))
+  body.add (toit-gen.Statement (toit-gen.StringInterpolation ["", external-ref, ""]))
+
+  fun := toit-gen.Function "use" --parameters=[] --return-type=null body
+  lib := toit-gen.Library "qualified-refs.toit"
+  lib.imports.add imp
+  lib.functions.add fun
+  program := toit-gen.Program
+  program.libraries.add lib
+  code := (program.gen --in-memory)["qualified-refs.toit"]
+
+  expect (code.contains "lib.external = 1")
+      --message="Expected an imported assignment target to keep its prefix"
+  expect (code.contains "local as lib.Thing")
+      --message="Expected an imported cast type to keep its prefix"
+  expect (code.contains "local is lib.Thing")
+      --message="Expected an imported type check to keep its prefix"
+  expect (code.contains "\$(lib.external)")
+      --message="Expected an imported interpolated reference to keep its prefix"
 
 test-named-external-constructor:
   // Named.external fabricates the parameter VarDefinition from a string for
