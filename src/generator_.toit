@@ -653,7 +653,7 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-Assign node/Assign -> any:
-    write "$node.target.name = "
+    write "$(ref-name_ node.target) = "
     expr_ node.value
     return null
 
@@ -698,28 +698,25 @@ class GeneratingVisitor implements NodeVisitor:
     return ref.target.name
 
   visit-Ref node/Ref -> any:
-    write node.target.name
+    write (ref-name_ node)
     return null
 
   visit-ImportedRef node/ImportedRef -> any:
-    if node.imp.uses-prefix:
-      write "$node.imp.prefix.$node.target.name"
-    else:
-      write node.target.name
+    write (ref-name_ node)
     return null
 
   visit-As node/As -> any:
     if needs-parens_ node.expression: write "("
     expr_ node.expression
     if needs-parens_ node.expression: write ")"
-    write " as $node.type.name"
+    write " as $(ref-name_ node.type)"
     return null
 
   visit-Is node/Is -> any:
     if needs-parens_ node.expression: write "("
     expr_ node.expression
     if needs-parens_ node.expression: write ")"
-    write " is $node.type.name"
+    write " is $(ref-name_ node.type)"
     return null
 
   visit-Binary node/Binary -> any:
@@ -773,7 +770,12 @@ class GeneratingVisitor implements NodeVisitor:
       else:
         part := node.parts[i]
         if part is Ref:
-          write "\$$(((part as Ref).target.name))"
+          ref := part as Ref
+          name := ref-name_ ref
+          if ref is ImportedRef and (ref as ImportedRef).imp.uses-prefix:
+            write "\$($name)"
+          else:
+            write "\$$name"
         else:
           write "\$("
           expr_ part
