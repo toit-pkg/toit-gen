@@ -770,12 +770,7 @@ class GeneratingVisitor implements NodeVisitor:
       else:
         part := node.parts[i]
         if part is Ref:
-          ref := part as Ref
-          name := ref-name_ ref
-          if ref is ImportedRef and (ref as ImportedRef).imp.uses-prefix:
-            write "\$($name)"
-          else:
-            write "\$$name"
+          write "\$($(ref-name_ (part as Ref)))"
         else:
           write "\$("
           expr_ part
