@@ -233,7 +233,7 @@ class GeneratingVisitor implements NodeVisitor:
     finally:
       in-static_ = old
 
-  needs-parens_ node/Expression -> bool:
+  should-parenthesize_ node/Expression -> bool:
     if node is Call:
       c := node as Call
       if not c.arguments.is-empty: return true
@@ -424,9 +424,9 @@ class GeneratingVisitor implements NodeVisitor:
       if param.is-nullable: write "?"
     if param.initial:
       write "="
-      if needs-parens_ param.initial: write "("
+      if should-parenthesize_ param.initial: write "("
       expr_ param.initial
-      if needs-parens_ param.initial: write ")"
+      if should-parenthesize_ param.initial: write ")"
 
   visit-VarDefinition node/VarDefinition -> any:
     return null
@@ -532,7 +532,7 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-Call node/Call -> any:
-    target-parens := needs-parens_ node.target
+    target-parens := should-parenthesize_ node.target
     if node.method-name and (node.target is Call and not (node.target as Call).method-name and (node.target as Call).arguments.is-empty):
       target-parens = true
 
@@ -576,7 +576,7 @@ class GeneratingVisitor implements NodeVisitor:
 
     inline-blocks := parenthesized-depth_ > 0
     if inline-blocks and multi-block:
-      throw "Cannot render a call with multiple blocks inside a parenthesized argument"
+      throw "The renderer cannot emit multiple block arguments when it parenthesizes their call"
 
     for i := 0; i < blocks.size; i++:
       blk := blocks[i]
@@ -623,18 +623,18 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-Index node/Index -> any:
-    if needs-parens_ node.target: write "("
+    if should-parenthesize_ node.target: write "("
     expr_ node.target
-    if needs-parens_ node.target: write ")"
+    if should-parenthesize_ node.target: write ")"
     write "["
     expr_ node.index
     write "]"
     return null
 
   visit-IndexAssign node/IndexAssign -> any:
-    if needs-parens_ node.target: write "("
+    if should-parenthesize_ node.target: write "("
     expr_ node.target
-    if needs-parens_ node.target: write ")"
+    if should-parenthesize_ node.target: write ")"
     write "["
     expr_ node.index
     write "] = "
@@ -642,9 +642,9 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-IndexSlice node/IndexSlice -> any:
-    if needs-parens_ node.target: write "("
+    if should-parenthesize_ node.target: write "("
     expr_ node.target
-    if needs-parens_ node.target: write ")"
+    if should-parenthesize_ node.target: write ")"
     write "["
     if node.from: expr_ node.from
     write ".."
@@ -706,16 +706,16 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   visit-As node/As -> any:
-    if needs-parens_ node.expression: write "("
+    if should-parenthesize_ node.expression: write "("
     expr_ node.expression
-    if needs-parens_ node.expression: write ")"
+    if should-parenthesize_ node.expression: write ")"
     write " as $(ref-name_ node.type)"
     return null
 
   visit-Is node/Is -> any:
-    if needs-parens_ node.expression: write "("
+    if should-parenthesize_ node.expression: write "("
     expr_ node.expression
-    if needs-parens_ node.expression: write ")"
+    if should-parenthesize_ node.expression: write ")"
     write " is $(ref-name_ node.type)"
     return null
 
@@ -754,7 +754,7 @@ class GeneratingVisitor implements NodeVisitor:
       write-arg_ node.operand
     else:
       write node.op
-      if needs-parens_ node.operand:
+      if should-parenthesize_ node.operand:
         write "("
         expr_ node.operand
         write ")"
@@ -812,7 +812,7 @@ class GeneratingVisitor implements NodeVisitor:
     return null
 
   write-arg_ arg/Expression -> none:
-    if needs-parens_ arg:
+    if should-parenthesize_ arg:
       write "("
       expr_ arg
       write ")"
@@ -829,7 +829,7 @@ class GeneratingVisitor implements NodeVisitor:
     indented left of its own header and the parser rejects it.
   */
   write-call-arg_ arg/Expression -> none:
-    if needs-parens_ arg:
+    if should-parenthesize_ arg:
       write-parenthesized_ arg
     else:
       expr_ arg

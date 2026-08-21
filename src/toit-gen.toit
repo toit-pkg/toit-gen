@@ -24,6 +24,7 @@ import host.file
 import .namer show GlobalNamer MemberNamer LocalNamer Namer
 import .visitor show NodeVisitor
 import .generator_ show *
+import .validator_ show validate-program_
 
 next-hash-code_ := 0
 
@@ -37,6 +38,37 @@ abstract class BaseNode_ implements Node:
   abstract accept visitor/NodeVisitor -> any
   operator == other/any -> bool:
     return identical this other
+
+/**
+A structured description of an invalid or unsupported AST shape.
+
+The $code is stable and suitable for programmatic handling. The $message is
+  intended for humans, while $library-path and $node identify the affected
+  part of the generated program.
+*/
+class ValidationDiagnostic:
+  code/string
+  message/string
+  library-path/string?
+  node/Node
+
+  constructor .code .message .node --.library-path=null:
+
+  stringify -> string:
+    location := library-path ? " in '$(library-path)'" : ""
+    return "$(code)$(location): $(message)"
+
+/**
+Thrown by $Program.gen when validation finds one or more diagnostics.
+*/
+class ValidationError:
+  diagnostics/List  // Of ValidationDiagnostic.
+
+  constructor .diagnostics:
+
+  stringify -> string:
+    lines := diagnostics.map: "  $it"
+    return "Invalid toit-gen AST:\n$(lines.join "\n")"
 
 /**
 A reference to a named element for use within Toitdocs.
@@ -150,9 +182,23 @@ class Program extends BaseNode_:
     this.accept (LocalNamingVisitor namers)
 
   /**
+  Validates this program without assigning names or rendering source.
+
+  Returns all diagnostics found in one traversal. An empty list means the AST
+    is supported and internally consistent.
+  */
+  validate -> List:
+    return validate-program_ this
+
+  validate-or-throw_ -> none:
+    diagnostics := validate
+    if not diagnostics.is-empty: throw (ValidationError diagnostics)
+
+  /**
   Generates the Toit code for the program and saves it to the file system.
   */
   gen -> none:
+    validate-or-throw_
     assign-names_
     libraries.do: | library/Library |
       path := library.path
@@ -170,6 +216,7 @@ class Program extends BaseNode_:
   Generates the Toit code for the program and returns it as a map from path to content.
   */
   gen --in-memory/True -> Map:
+    validate-or-throw_
     assign-names_
     result := {:}
     libraries.do: | library/Library |

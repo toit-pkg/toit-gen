@@ -36,6 +36,17 @@ main:
   print result["generated/hello.toit"]
 ```
 
+## Validation
+
+`Program.validate` returns all structured `ValidationDiagnostic` objects found
+without assigning names or rendering source. Each diagnostic has a stable
+`code`, a human-readable `message`, the affected `node`, and its
+`library-path` when available.
+
+Both forms of `Program.gen` validate automatically and throw a
+`ValidationError` containing the collected diagnostics before naming or
+writing output.
+
 ## Gold tests
 
 The gold tests compare representative generated libraries with the checked-in
