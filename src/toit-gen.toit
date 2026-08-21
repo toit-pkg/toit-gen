@@ -198,19 +198,34 @@ class Program extends BaseNode_:
   Generates the Toit code for the program and saves it to the file system.
   */
   gen -> none:
-    validate-or-throw_
-    assign-names_
-    libraries.do: | library/Library |
-      path := library.path
-      dir := fs.dirname path
-      if not file.is-directory dir:
-        if file.is-file dir:
-          throw "Cannot create directory $dir: A file with that name exists."
-        directory.mkdir --recursive dir
-      stream := file.Stream.for-write path
-      context := WriteContext_ stream.out
-      library.gen_ context
-      stream.close
+    generated := gen --in-memory
+    generated.do: | path/string code/string |
+      write-generated-file_ path code
+
+  write-generated-file_ path/string code/string -> none:
+    dir := fs.dirname path
+    if not file.is-directory dir:
+      if file.is-file dir:
+        throw "Cannot create directory $dir: A file with that name exists."
+      directory.mkdir --recursive dir
+
+    permissions/int? := null
+    target-stat := file.stat path
+    if target-stat and target-stat[file.ST-TYPE] == file.REGULAR-FILE:
+      permissions = target-stat[file.ST-MODE]
+
+    temp-dir := directory.mkdtemp (fs.join dir ".toit-gen-")
+    temp-path := fs.join temp-dir "output"
+    try:
+      stream := file.Stream.for-write temp-path
+      try:
+        stream.out.write code
+      finally:
+        stream.close
+      if permissions: file.chmod temp-path permissions
+      file.rename temp-path path
+    finally:
+      directory.rmdir temp-dir --recursive --force
 
   /**
   Generates the Toit code for the program and returns it as a map from path to content.
