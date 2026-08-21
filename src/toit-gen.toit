@@ -198,19 +198,60 @@ class Program extends BaseNode_:
   Generates the Toit code for the program and saves it to the file system.
   */
   gen -> none:
-    validate-or-throw_
-    assign-names_
-    libraries.do: | library/Library |
-      path := library.path
-      dir := fs.dirname path
-      if not file.is-directory dir:
-        if file.is-file dir:
-          throw "Cannot create directory $dir: A file with that name exists."
-        directory.mkdir --recursive dir
-      stream := file.Stream.for-write path
-      context := WriteContext_ stream.out
-      library.gen_ context
-      stream.close
+    generated := gen --in-memory
+    generated.do: | path/string code/string |
+      write-generated-file_ path code
+
+  write-generated-file_ path/string code/string -> none:
+    dir := fs.dirname path
+    if not file.is-directory dir:
+      if file.is-file dir:
+        throw "Cannot create directory $dir: A file with that name exists."
+      directory.mkdir --recursive dir
+
+    permissions/int? := null
+    target-stat := file.stat path
+    target-is-regular := false
+    if target-stat and target-stat[file.ST-TYPE] == file.REGULAR-FILE:
+      target-is-regular = true
+      permissions = target-stat[file.ST-MODE]
+
+    temp-dir := directory.mkdtemp (fs.join dir ".toit-gen-")
+    temp-path := fs.join temp-dir "output"
+    try:
+      stream := file.Stream.for-write temp-path
+      try:
+        stream.out.write code
+      finally:
+        stream.close
+      if permissions: file.chmod temp-path permissions
+      replace-generated-file_ temp-path path target-is-regular
+    finally:
+      directory.rmdir temp-dir --recursive --force
+
+  replace-generated-file_
+      temp-path/string
+      path/string
+      target-is-regular/bool -> none:
+    error := catch: file.rename temp-path path
+    if not error: return
+    if error != "ALREADY_EXISTS" or not target-is-regular: throw error
+
+    dir := fs.dirname path
+    backup-dir := directory.mkdtemp (fs.join dir ".toit-gen-backup-")
+    backup-path := fs.join backup-dir "output"
+    file.rename path backup-path
+    installed := false
+    restored := false
+    try:
+      file.rename temp-path path
+      installed = true
+    finally:
+      if not installed:
+        file.rename backup-path path
+        restored = true
+      if installed or restored:
+        directory.rmdir backup-dir --recursive --force
 
   /**
   Generates the Toit code for the program and returns it as a map from path to content.
