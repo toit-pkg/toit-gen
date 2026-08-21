@@ -211,7 +211,9 @@ class Program extends BaseNode_:
 
     permissions/int? := null
     target-stat := file.stat path
+    target-is-regular := false
     if target-stat and target-stat[file.ST-TYPE] == file.REGULAR-FILE:
+      target-is-regular = true
       permissions = target-stat[file.ST-MODE]
 
     temp-dir := directory.mkdtemp (fs.join dir ".toit-gen-")
@@ -223,9 +225,33 @@ class Program extends BaseNode_:
       finally:
         stream.close
       if permissions: file.chmod temp-path permissions
-      file.rename temp-path path
+      replace-generated-file_ temp-path path target-is-regular
     finally:
       directory.rmdir temp-dir --recursive --force
+
+  replace-generated-file_
+      temp-path/string
+      path/string
+      target-is-regular/bool -> none:
+    error := catch: file.rename temp-path path
+    if not error: return
+    if error != "ALREADY_EXISTS" or not target-is-regular: throw error
+
+    dir := fs.dirname path
+    backup-dir := directory.mkdtemp (fs.join dir ".toit-gen-backup-")
+    backup-path := fs.join backup-dir "output"
+    file.rename path backup-path
+    installed := false
+    restored := false
+    try:
+      file.rename temp-path path
+      installed = true
+    finally:
+      if not installed:
+        file.rename backup-path path
+        restored = true
+      if installed or restored:
+        directory.rmdir backup-dir --recursive --force
 
   /**
   Generates the Toit code for the program and returns it as a map from path to content.

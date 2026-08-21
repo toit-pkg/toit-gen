@@ -51,9 +51,11 @@ writing output.
 
 `Program.gen` renders every library before changing the filesystem. Each
 generated file is written to a temporary file beside its destination, closed,
-and then moved into place with a same-filesystem rename. Existing regular-file
-permissions are preserved, and temporary files are removed when writing or
-replacement fails.
+and then moved into place with a same-filesystem rename. If the platform does
+not allow renaming over an existing regular file, the old file is moved aside
+and restored if installing the replacement fails. Existing permissions are
+preserved, and temporary files are removed after success or recoverable
+failure.
 
 ## Gold tests
 
