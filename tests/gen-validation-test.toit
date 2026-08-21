@@ -8,7 +8,7 @@ import toit-gen
 main:
   test-collects-structural-diagnostics
   test-generation-validates-before-naming
-  test-parenthesized-multi-block-call
+  test-renderer-parenthesized-multi-block-call
   test-block-position
   test-import-ownership
   test-field-parameter-ownership
@@ -52,7 +52,10 @@ test-generation-validates-before-naming:
   expect ("$validation-error".contains "INVALID_CLASS_KIND")
   expect-null invalid-class.name
 
-test-parenthesized-multi-block-call:
+test-renderer-parenthesized-multi-block-call:
+  // The outer call makes the renderer parenthesize the inner call for a
+  //   simple argument layout. Multiple trailing blocks cannot be emitted
+  //   reliably before that closing parenthesis.
   inner := toit-gen.Call
       (external-ref "combine")
       --arguments=[simple-block, simple-block]

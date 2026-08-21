@@ -37,7 +37,7 @@ class ValidationVisitor_ extends TraversingVisitor:
           "Toitdoc parts must be strings or Toitdoc reference objects"
           owner
 
-  needs-parens_ node/Expression -> bool:
+  should-parenthesize_ node/Expression -> bool:
     if node is Call:
       call := node as Call
       if not call.arguments.is-empty: return true
@@ -159,7 +159,7 @@ class ValidationVisitor_ extends TraversingVisitor:
 
     if parenthesized-depth_ > 0 and block-count > 1:
       report_ "MULTIPLE_BLOCKS_IN_PARENTHESIZED_CALL"
-          "A parenthesized call cannot render multiple block arguments"
+          "The renderer cannot emit multiple block arguments when it parenthesizes their call"
           node
 
     node.target.accept this
@@ -176,7 +176,7 @@ class ValidationVisitor_ extends TraversingVisitor:
           or (argument is Named and (argument as Named).value is Block)
       named-allowed_ = argument is Named
 
-      parenthesized := needs-parens_ argument
+      parenthesized := should-parenthesize_ argument
       if parenthesized: parenthesized-depth_++
       argument.accept this
       if parenthesized: parenthesized-depth_--
