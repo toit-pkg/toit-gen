@@ -47,16 +47,6 @@ Both forms of `Program.gen` validate automatically and throw a
 `ValidationError` containing the collected diagnostics before naming or
 writing output.
 
-## Filesystem generation
-
-`Program.gen` renders every library before changing the filesystem. Each
-generated file is written to a temporary file beside its destination, closed,
-and then moved into place with a same-filesystem rename. If the platform does
-not allow renaming over an existing regular file, the old file is moved aside
-and restored if installing the replacement fails. Existing permissions are
-preserved, and temporary files are removed after success or recoverable
-failure.
-
 ## Gold tests
 
 The gold tests compare representative generated libraries with the checked-in
